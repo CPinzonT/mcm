@@ -2,10 +2,10 @@
     @push('styles')
         <style>
             .ops-shell {
-                --mcm-primary: #1E5AA8;
-                --mcm-primary-hover: #15427A;
-                --mcm-primary-soft: rgba(30, 90, 168, 0.08);
-                --mcm-bg: #F4F6F9;
+                --mcm-primary: #2852a0;
+                --mcm-primary-hover: #1f4285;
+                --mcm-primary-soft: rgba(40, 82, 160, 0.1);
+                --mcm-bg: transparent;
                 --mcm-surface: #FFFFFF;
                 --mcm-surface-soft: #F8FAFC;
                 --mcm-surface-strong: #EFF2F7;
@@ -61,7 +61,8 @@
             body:has(.ops-shell) .fi-main,
             body:has(.ops-shell) .fi-page,
             body:has(.ops-shell) .fi-page-content {
-                background: #F4F6F9;
+                background: #2852a0 !important;
+                background-image: linear-gradient(165deg, #2852a0 0%, #1f4285 50%, #2852a0 100%) !important;
             }
 
             .dark body:has(.ops-shell),
@@ -279,6 +280,35 @@
             .ops-result--quiet { box-shadow: none; }
             .ops-error-text { color: var(--mcm-red, #EF4444); font-size: 0.78rem; margin-top: 0.35rem; }
             .ops-history-anchor { scroll-margin-top: 6rem; }
+
+            .ops-history-panel {
+                background: var(--mcm-surface, #FFFFFF);
+                border: 1px solid var(--mcm-border, #D8E0EC);
+                border-radius: 12px;
+                padding: 1rem 1.15rem;
+                scroll-margin-top: 5rem;
+            }
+
+            /* Tabla de historial (EmbeddedTable) dentro de páginas de carga */
+            body:has(.ops-shell) .fi-resource-relation-manager,
+            body:has(.ops-shell) .fi-ta-ctn,
+            body:has(.ops-shell) .fi-embedded-table {
+                background: var(--mcm-surface, #FFFFFF);
+                border: 1px solid var(--mcm-border, #D8E0EC);
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: none;
+            }
+
+            body:has(.ops-shell) .fi-ta-header-heading {
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: var(--mcm-text-strong, #111111);
+            }
+
+            body:has(.ops-shell) .fi-ta-actions .fi-ac-btn-action {
+                font-size: 0.78rem;
+            }
 
             .ops-file-dropzone {
                 align-items: center;

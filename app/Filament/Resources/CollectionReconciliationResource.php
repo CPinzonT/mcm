@@ -40,9 +40,6 @@ class CollectionReconciliationResource extends Resource
         return $table
             ->defaultSort('id', 'desc')
             ->columns([
-                TextColumn::make('period_collection')
-                    ->label('Periodo recaudo')
-                    ->badge(),
                 TextColumn::make('document_number')
                     ->label('Documento')
                     ->searchable()
@@ -77,6 +74,8 @@ class CollectionReconciliationResource extends Resource
                         ConciliationService::STATUS_NO_INVOICE      => 'gray',
                         ConciliationService::STATUS_TYPE_MISMATCH   => 'warning',
                         ConciliationService::STATUS_PERIOD_MISMATCH => 'info',
+                        ConciliationService::STATUS_CLIENT_MISMATCH => 'warning',
+                        ConciliationService::STATUS_SELLER_MISMATCH => 'warning',
                         default                                      => 'gray',
                     })
                     ->formatStateUsing(fn (?string $state): string => match ($state) {
@@ -86,14 +85,13 @@ class CollectionReconciliationResource extends Resource
                         ConciliationService::STATUS_NO_INVOICE      => 'Sin factura',
                         ConciliationService::STATUS_TYPE_MISMATCH   => 'Tipo diferente',
                         ConciliationService::STATUS_PERIOD_MISMATCH => 'Periodo diferente',
+                        ConciliationService::STATUS_CLIENT_MISMATCH => 'Cliente diferente',
+                        ConciliationService::STATUS_SELLER_MISMATCH => 'Vendedor diferente',
                         default                                      => 'Sin conciliar',
                     }),
                 TextColumn::make('confidence_level')
                     ->label('Confianza')
                     ->suffix('%')
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('period_portfolio')
-                    ->label('Periodo cartera')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('reconciled_at')
                     ->label('Conciliado')
@@ -101,14 +99,6 @@ class CollectionReconciliationResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                SelectFilter::make('period_collection')
-                    ->label('Periodo recaudo')
-                    ->options(fn () => CollectionReconciliation::query()
-                        ->distinct()
-                        ->orderByDesc('period_collection')
-                        ->pluck('period_collection', 'period_collection')
-                        ->filter()
-                        ->toArray()),
                 SelectFilter::make('status')
                     ->label('Estado')
                     ->options([
@@ -118,24 +108,15 @@ class CollectionReconciliationResource extends Resource
                         ConciliationService::STATUS_NO_INVOICE      => 'Sin factura',
                         ConciliationService::STATUS_TYPE_MISMATCH   => 'Tipo diferente',
                         ConciliationService::STATUS_PERIOD_MISMATCH => 'Periodo diferente',
+                        ConciliationService::STATUS_CLIENT_MISMATCH => 'Cliente diferente',
+                        ConciliationService::STATUS_SELLER_MISMATCH => 'Vendedor diferente',
                     ]),
             ])
             ->headerActions([
                 Action::make('export')
                     ->label('Exportar XLSX')
                     ->icon('heroicon-o-arrow-down-tray')
-                    ->form([
-                        \Filament\Forms\Components\Select::make('period_key')
-                            ->label('Periodo recaudo')
-                            ->options(fn () => CollectionReconciliation::query()
-                                ->distinct()
-                                ->orderByDesc('period_collection')
-                                ->pluck('period_collection', 'period_collection')
-                                ->filter()
-                                ->toArray())
-                            ->required(),
-                    ])
-                    ->action(fn (array $data) => app(ExportService::class)->exportReconciliation($data['period_key'])),
+                    ->action(fn () => app(ExportService::class)->exportReconciliation()),
             ])
             ->paginated([25, 50, 100]);
     }

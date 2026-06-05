@@ -89,6 +89,35 @@ class ImportNormalizer
         return $text !== null ? Str::upper($text) : null;
     }
 
+    /**
+     * Comparación flexible de nombres (cliente / vendedor) entre recaudo y cartera.
+     */
+    public function namesMatch(?string $left, ?string $right): bool
+    {
+        if ($left === null || $left === '' || $right === null || $right === '') {
+            return true;
+        }
+
+        $a = $this->normalizeMatchKey($left);
+        $b = $this->normalizeMatchKey($right);
+
+        if ($a === '' || $b === '') {
+            return true;
+        }
+
+        return $a === $b || str_contains($a, $b) || str_contains($b, $a);
+    }
+
+    private function normalizeMatchKey(string $value): string
+    {
+        return Str::of($value)
+            ->trim()
+            ->upper()
+            ->ascii()
+            ->replaceMatches('/[^A-Z0-9]+/', '')
+            ->value();
+    }
+
     public function parseDate(mixed $value): ?CarbonImmutable
     {
         if ($value === null || $value === '') {
@@ -242,7 +271,8 @@ class ImportNormalizer
 
     public function calculateDaysOverdue(CarbonImmutable $dueDate, CarbonImmutable $cutDate): int
     {
-        return max(0, $dueDate->startOfDay()->diffInDays($cutDate->startOfDay(), false));
+        return app(\App\Services\Risk\RiskClassificationService::class)
+            ->daysOverdueAfterDue($dueDate, $cutDate);
     }
 
     /**
@@ -286,5 +316,52 @@ class ImportNormalizer
             ->values();
 
         return $matchingObserved->first();
+    }
+
+    /**
+     * Ej. Recaudomcm_21demayo.xlsx → 2026-05 cuando el mes va pegado al día en el nombre.
+     */
+    public function inferPeriodFromFilename(string $filename, array $observedPeriods = []): ?string
+    {
+        $fromSpaced = $this->inferPortfolioPeriodFromFilename($filename, $observedPeriods);
+        if ($fromSpaced !== null) {
+            return $fromSpaced;
+        }
+
+        $normalized = Str::of(pathinfo($filename, PATHINFO_FILENAME))
+            ->lower()
+            ->ascii()
+            ->replaceMatches('/[^a-z0-9]+/', '')
+            ->value();
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $year = null;
+        if (preg_match('/(20\d{2})/', $normalized, $yearMatch)) {
+            $year = (int) $yearMatch[1];
+        }
+
+        foreach (self::MONTH_NAME_MAP as $token => $monthNumber) {
+            if (! preg_match('/(\d{1,2})' . preg_quote($token, '/') . '/', $normalized)) {
+                continue;
+            }
+
+            if ($year !== null) {
+                return sprintf('%04d-%s', $year, $monthNumber);
+            }
+
+            $matchingObserved = collect($observedPeriods)
+                ->map(fn (string $periodKey) => $this->parseMonthKey($periodKey))
+                ->filter()
+                ->filter(fn (string $periodKey) => str_ends_with($periodKey, '-' . $monthNumber))
+                ->sortDesc()
+                ->values();
+
+            return $matchingObserved->first() ?? sprintf('%04d-%s', (int) now()->format('Y'), $monthNumber);
+        }
+
+        return null;
     }
 }

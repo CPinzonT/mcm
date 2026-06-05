@@ -3,6 +3,11 @@
 namespace App\Services\Dashboard;
 
 use App\Data\DashboardFiltersData;
+use App\Services\Dashboard\Concerns\AppliesCollectionPaymentDateScope;
+use App\Services\Dashboard\Concerns\AppliesLatestCollectionLoad;
+use App\Services\Dashboard\Concerns\AppliesOperativePortfolioDocuments;
+use App\Services\Dashboard\Concerns\AppliesPortfolioPeriodCut;
+use App\Services\Risk\Concerns\AppliesLiveDaysOverdue;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -10,18 +15,18 @@ use Illuminate\Support\Facades\DB;
  *
  * SUPUESTOS DOCUMENTADOS:
  * ─────────────────────────────────────────────────────────────────────────
- * KPI 3 - ISM: Ponderación de buckets de mora alta.
- *   Formula: (SUM(high)*0.5 + SUM(critical)*1.0) / cartera_total * 100
- *   Donde: high = risk_level 'high' (91-180d), critical = risk_level 'critical' (181+d)
- *   Razón: los buckets > 90d tienen distinto peso de riesgo real para la cartera.
- *   Parametrizable vía config('dashboard.ism_weights').
+ * Cartera total: SUM(pending_amount) de la carga activa más reciente (un periodo),
+ *   documentos operativos, corte period_date de esa carga; opcional filtro issue_date.
+ *
+ * KPI 3 - ISM: buckets por días de mora vivos (vencimiento → fecha de consulta) ponderados / cartera_total.
  *
  * KPI 4 - Rotación: (cartera_total / recaudo_período) * 30
  *   Representa cuántos días tarda en rotar la cartera a ritmo de recaudo actual.
  *   Si recaudo = 0, retorna null (estado vacío, no cero).
  *
- * KPI 8 - Recaudo del período: SUM(collection_details.amount) para el período.
- *   Período = payment_date en el rango derivado del filtro activo.
+ * KPI 8 - Recaudo: última carga de recaudo activa, pagos del corte del mes de la
+ *   cartera activa (independiente del filtro Desde/Hasta del tablero).
+ * KPI 9 - % Recuperación: recaudo del corte del mes / cartera del mismo corte.
  *
  * KPI 10/11 - Presupuesto: si no existe fila en budget_collections, retorna null.
  *   El período de presupuesto se resuelve como el primer día del mes del filtro.
@@ -41,23 +46,32 @@ use Illuminate\Support\Facades\DB;
  */
 class KpiService
 {
+    use AppliesCollectionPaymentDateScope;
+    use AppliesLatestCollectionLoad;
+    use AppliesLiveDaysOverdue;
+    use AppliesOperativePortfolioDocuments;
+    use AppliesPortfolioPeriodCut;
     public function compute(DashboardFiltersData $filters): array
     {
-        // ── Cartera activa (status activo/parcial/en proceso) ──────────────
+        // ── Cartera: último corte + filtro opcional por fecha de contabilización ──
         $activeBase = $this->activePortfolioQuery($filters);
 
-        $portfolioTotal   = (clone $activeBase)->sum('pd.pending_amount');
-        $portfolioTotal   = (float) $portfolioTotal;
+        $balanceBase = clone $activeBase;
+        $this->applyPortfolioBalanceStatus($balanceBase);
+        $portfolioTotal = (float) (clone $balanceBase)->sum('pd.pending_amount');
 
-        // ── KPI 1: Cartera Total ───────────────────────────────────────────
-        // ── KPI 2: % Cartera Crítica (>90 días) y % Cartera Vencida ───────
-        $criticalAmount = (float) (clone $activeBase)
-            ->where('pd.days_overdue', '>', 90)
-            ->sum('pd.pending_amount');
+        $operativeBase = clone $activeBase;
+        $this->applyOperativeDocumentStatus($operativeBase);
 
-        $overdueAmount = (float) (clone $activeBase)
-            ->where('pd.days_overdue', '>', 0)
-            ->sum('pd.pending_amount');
+        // ── KPI 1: Cartera Total (misma base que total_pending_amount de la carga) ──
+        // ── KPI 2: % Cartera Crítica (>90 días) y % Cartera Vencida (solo operativos) ──
+        $criticalBase = clone $operativeBase;
+        $this->whereLiveDaysOverdue($criticalBase, '>', 90, $filters);
+        $criticalAmount = (float) $criticalBase->sum('pd.pending_amount');
+
+        $overdueBase = clone $operativeBase;
+        $this->whereLiveDaysOverdue($overdueBase, '>', 0, $filters);
+        $overdueAmount = (float) $overdueBase->sum('pd.pending_amount');
 
         $criticalRate = $portfolioTotal > 0
             ? round($criticalAmount / $portfolioTotal * 100, 2)
@@ -70,11 +84,11 @@ class KpiService
         // ── KPI 3: Índice de Severidad de Mora (ratio, idéntico a mcmdef) ────
         // Pesos exactos: 31-60d × 0.5, 61-90d × 1.0, 91-180d × 2.0,
         //   181-360d × 3.0, 361+d × 4.0  (5 buckets usando days_overdue)
-        $ismB31_60   = (float) (clone $activeBase)->whereBetween('pd.days_overdue', [31,  60])->sum('pd.pending_amount');
-        $ismB61_90   = (float) (clone $activeBase)->whereBetween('pd.days_overdue', [61,  90])->sum('pd.pending_amount');
-        $ismB91_180  = (float) (clone $activeBase)->whereBetween('pd.days_overdue', [91, 180])->sum('pd.pending_amount');
-        $ismB181_360 = (float) (clone $activeBase)->whereBetween('pd.days_overdue', [181, 360])->sum('pd.pending_amount');
-        $ismB361plus = (float) (clone $activeBase)->where('pd.days_overdue', '>', 360)->sum('pd.pending_amount');
+        $ismB31_60   = (float) $this->ismBucketSum($operativeBase, $filters, 31, 60);
+        $ismB61_90   = (float) $this->ismBucketSum($operativeBase, $filters, 61, 90);
+        $ismB91_180  = (float) $this->ismBucketSum($operativeBase, $filters, 91, 180);
+        $ismB181_360 = (float) $this->ismBucketSum($operativeBase, $filters, 181, 360);
+        $ismB361plus = (float) $this->ismBucketSum($operativeBase, $filters, 361, 99999);
         $ismValue    = $portfolioTotal > 0
             ? round(
                 ($ismB31_60 * 0.5 + $ismB61_90 * 1.0 + $ismB91_180 * 2.0
@@ -85,27 +99,35 @@ class KpiService
             : 0.0;
 
         // ── KPI 7: % Documentos Vencidos ─────────────────────────────────
-        $totalDocs   = (clone $activeBase)->count('pd.id');
-        $overdueDocs = (clone $activeBase)->where('pd.days_overdue', '>', 0)->count('pd.id');
+        $totalDocs   = (clone $balanceBase)->count('pd.id');
+        $overdueDocsBase = clone $operativeBase;
+        $this->whereLiveDaysOverdue($overdueDocsBase, '>', 0, $filters);
+        $overdueDocs = $overdueDocsBase->count('pd.id');
         $overdueDocRate = $totalDocs > 0 ? round($overdueDocs / $totalDocs * 100, 2) : 0.0;
 
-        // ── KPI 8: Recaudo del período ────────────────────────────────────
-        // Solo consulta recaudo si hay un período activo (igual que mcmdef)
-        $periodSelected = !empty($filters->periods)
-            || !empty($filters->period)
-            || (!empty($filters->dateFrom) && !empty($filters->dateTo));
+        // ── KPI 8/9: Recaudo y recuperación (corte fijo del mes de cartera activa) ──
+        $collectionLoad   = $this->resolveDashboardCollectionLoad();
+        $hasRecaudoLoad   = $collectionLoad !== null;
+        $recaudoFilters   = $this->filtersForRecaudoMonthCut($filters);
+        $recaudoPeriod    = $this->collectionForPeriod($recaudoFilters);
+        $hasRecaudoData   = $hasRecaudoLoad && $recaudoPeriod > 0;
 
-        $recaudoPeriod  = $periodSelected ? $this->collectionForPeriod($filters) : 0.0;
-        $hasRecaudoData = $periodSelected && $recaudoPeriod > 0;
+        $portfolioMonthBase = $this->activePortfolioQuery($recaudoFilters);
+        $this->applyPortfolioBalanceStatus($portfolioMonthBase);
+        $portfolioForRecaudo = (float) (clone $portfolioMonthBase)->sum('pd.pending_amount');
 
-        // ── KPI 4: Rotación de Cartera ────────────────────────────────────
-        $rotation = ($hasRecaudoData && $portfolioTotal > 0)
-            ? round(($portfolioTotal / $recaudoPeriod) * 30, 1)
+        $periodSelected = ! empty($filters->period)
+            || ! empty($filters->dateFrom)
+            || ! empty($filters->dateTo);
+
+        // ── KPI 4: Rotación (mismo corte de mes que recaudo) ───────────────
+        $rotation = ($hasRecaudoData && $portfolioForRecaudo > 0)
+            ? round(($portfolioForRecaudo / $recaudoPeriod) * 30, 1)
             : null;
 
-        // ── KPI 9: % Recuperación del período ────────────────────────────
-        $recoveryRate = ($hasRecaudoData && $portfolioTotal > 0)
-            ? round($recaudoPeriod / $portfolioTotal * 100, 2)
+        // ── KPI 9: % Recuperación del corte del mes ───────────────────────
+        $recoveryRate = ($hasRecaudoData && $portfolioForRecaudo > 0)
+            ? round($recaudoPeriod / $portfolioForRecaudo * 100, 2)
             : null;
 
         // ── KPI 5: % Concentración Top 5 Clientes ────────────────────────
@@ -135,6 +157,27 @@ class KpiService
             ? round(abs($negativeAmount) / abs($portfolioTotal) * 100, 2)
             : null;
 
+        $negativeByDocumentType = [];
+        if ($negativeAmount != 0.0) {
+            $negAbs = abs($negativeAmount);
+            $rows = (clone $activeBase)
+                ->where('pd.pending_amount', '<', 0)
+                ->select('pd.document_type', DB::raw('SUM(pd.pending_amount) as total'))
+                ->groupBy('pd.document_type')
+                ->orderByRaw('SUM(pd.pending_amount) ASC')
+                ->get();
+            foreach ($rows as $row) {
+                $type = (string) ($row->document_type ?? '');
+                $type = $type !== '' ? $type : 'N/D';
+                $amt = (float) $row->total;
+                $negativeByDocumentType[] = [
+                    'document_type' => $type,
+                    'amount'        => $amt,
+                    'share_pct'     => $negAbs > 0 ? round(abs($amt) / $negAbs * 100, 1) : 0.0,
+                ];
+            }
+        }
+
         // ── Score de Salud (fórmula mcmdef) ──────────────────────────────
         // score = 100 - (ism*15 + conc_top5*0.30 + critical_rate*0.30 + overdue_doc_rate*0.25)
         $score = $this->computeScore(
@@ -163,10 +206,16 @@ class KpiService
             'overdue_docs'      => $overdueDocs,
             'recaudo_period'    => $recaudoPeriod,
             'recovery_rate'     => $recoveryRate,
+            'collection_load_id' => $collectionLoad?->id,
+            'collection_load_ref' => $collectionLoad?->reference,
+            'collection_load_total' => $collectionLoad ? (float) ($collectionLoad->total_collected ?? 0) : 0.0,
+            'collection_date_label' => $this->defaultMonthCutPaymentLabel(),
+            'has_recaudo_load'  => $hasRecaudoLoad,
             'budget'            => $budget,
             'vs_meta_rate'      => $vsMetaRate,
             'negative_rate'     => $negativeRate,
             'negative_amount'   => $negativeAmount,
+            'negative_by_document_type' => $negativeByDocumentType,
             'score'             => $score,
             'score_label'       => $this->scoreLabel($score),
             'score_color'       => $this->scoreColor($score),
@@ -175,6 +224,18 @@ class KpiService
             'has_recaudo_data'  => $hasRecaudoData,
             'period_selected'   => $periodSelected,
         ];
+    }
+
+    private function ismBucketSum($activeBase, DashboardFiltersData $filters, int $min, int $max): float
+    {
+        $q = clone $activeBase;
+        if ($max >= 99999) {
+            $this->whereLiveDaysOverdue($q, '>', $min, $filters);
+        } else {
+            $this->whereLiveDaysBetween($q, $min, $max, $filters);
+        }
+
+        return (float) $q->sum('pd.pending_amount');
     }
 
     // ── Base query builder ─────────────────────────────────────────────────
@@ -189,10 +250,9 @@ class KpiService
             ->join('portfolio_loads as pl', 'pl.id', '=', 'pd.portfolio_load_id')
             ->join('clients as c', 'c.id', '=', 'pd.client_id')
             ->leftJoin('advisors as a', 'a.id', '=', 'pd.advisor_id')
-            ->where('pl.is_active', true)
             ->where('pl.status', 'completed')
-            ->whereIn('pd.status', ['active', 'partial', 'in_process'])
             ->whereNull('pd.deleted_at');
+        $this->applyDashboardPortfolioLoad($q);
 
         $this->applyPortfolioFilters($q, $filters);
 
@@ -205,9 +265,9 @@ class KpiService
             ->join('portfolio_loads as pl', 'pl.id', '=', 'pd.portfolio_load_id')
             ->join('clients as c', 'c.id', '=', 'pd.client_id')
             ->leftJoin('advisors as a', 'a.id', '=', 'pd.advisor_id')
-            ->where('pl.is_active', true)
             ->where('pl.status', 'completed')
             ->whereNull('pd.deleted_at');
+        $this->applyDashboardPortfolioLoad($q);
 
         $this->applyPortfolioFilters($q, $filters);
 
@@ -216,95 +276,98 @@ class KpiService
 
     private function applyPortfolioFilters($query, DashboardFiltersData $filters): void
     {
-        // Período — filtra por issue_date (fecha de emisión del documento, como mcmdef)
-        if (!empty($filters->periods)) {
-            $query->whereIn(DB::raw("LEFT(pd.issue_date, 7)"), $filters->periods);
-        } elseif ($filters->period) {
-            $ym = substr($filters->period, 0, 7);
-            $query->whereRaw("LEFT(pd.issue_date, 7) = ?", [$ym]);
-        } elseif ($filters->dateFrom && $filters->dateTo) {
-            $query->whereBetween('pd.issue_date', [$filters->dateFrom, $filters->dateTo]);
-        }
-        // Sin filtro de período → muestra todos los documentos activos
+        $this->applyPortfolioPeriodCut($query, $filters);
 
         // UEN
         if (!empty($filters->uens)) {
-            $query->whereIn('c.uen', $filters->uens);
+            $vals = array_values(array_unique(array_map(static fn ($v) => trim((string) $v), $filters->uens)));
+            $vals = array_values(array_filter($vals, static fn ($v) => $v !== ''));
+            if ($vals !== []) {
+                $query->whereIn(DB::raw('TRIM(c.uen)'), $vals);
+            }
         } elseif ($filters->uen) {
-            $query->where('c.uen', $filters->uen);
+            $query->whereRaw('TRIM(c.uen) = ?', [trim($filters->uen)]);
         }
 
         // Regional
         if (!empty($filters->regionals)) {
-            $query->whereIn('c.region', $filters->regionals);
+            $vals = array_values(array_unique(array_map(static fn ($v) => trim((string) $v), $filters->regionals)));
+            $vals = array_values(array_filter($vals, static fn ($v) => $v !== ''));
+            if ($vals !== []) {
+                $query->whereIn(DB::raw('TRIM(c.region)'), $vals);
+            }
         } elseif ($filters->regional) {
-            $query->where('c.region', $filters->regional);
+            $query->whereRaw('TRIM(c.region) = ?', [trim($filters->regional)]);
         }
 
         // Canal
         if (!empty($filters->channels)) {
-            $query->whereIn('c.channel', $filters->channels);
+            $vals = array_values(array_unique(array_map(static fn ($v) => trim((string) $v), $filters->channels)));
+            $vals = array_values(array_filter($vals, static fn ($v) => $v !== ''));
+            if ($vals !== []) {
+                $query->whereIn(DB::raw('TRIM(c.channel)'), $vals);
+            }
         } elseif ($filters->channel) {
-            $query->where('c.channel', $filters->channel);
+            $query->whereRaw('TRIM(c.channel) = ?', [trim($filters->channel)]);
         }
 
-        // Asesor — multi-select tiene prioridad
-        if (!empty($filters->advisors)) {
-            $query->whereIn('pd.advisor_id', $filters->advisors);
-        } elseif ($filters->advisorId) {
-            $query->where('pd.advisor_id', $filters->advisorId);
-        }
+        // Asesor — multi-select (IDs expandidos por nombre vía DashboardFilterCascadeService)
+        app(DashboardFilterCascadeService::class)->applyPortfolioAdvisorConstraint($query, $filters);
 
         if ($filters->clientId) {
             $query->where('pd.client_id', $filters->clientId);
         }
+
+        if (!empty($filters->riskLevels)) {
+            $query->whereIn('pd.risk_level', $filters->riskLevels);
+        }
+
+        if (!empty($filters->documentTypes)) {
+            $query->whereIn('pd.document_type', $filters->documentTypes);
+        }
+    }
+
+    /**
+     * Filtros para recaudo/recuperación: dimensiones del tablero + corte del mes de cartera.
+     */
+    private function filtersForRecaudoMonthCut(DashboardFiltersData $filters): DashboardFiltersData
+    {
+        [$start, $end] = $this->resolveDefaultMonthCutRange();
+
+        return new DashboardFiltersData(
+            period: null,
+            uen: $filters->uen,
+            regional: $filters->regional,
+            channel: $filters->channel,
+            advisorId: $filters->advisorId,
+            clientId: $filters->clientId,
+            dateFrom: $start,
+            dateTo: $end,
+            channels: $filters->channels,
+            uens: $filters->uens,
+            regionals: $filters->regionals,
+            advisors: $filters->advisors,
+            riskLevels: $filters->riskLevels,
+            documentTypes: $filters->documentTypes,
+        );
     }
 
     // ── Recaudo ────────────────────────────────────────────────────────────
 
     private function collectionForPeriod(DashboardFiltersData $filters): float
     {
+        $load = $this->resolveDashboardCollectionLoad();
+        if ($load === null) {
+            return 0.0;
+        }
+
         $q = DB::table('collection_details as cd')
-            ->join('collection_loads as cl', 'cl.id', '=', 'cd.collection_load_id')
-            ->join('clients as c', 'c.id', '=', 'cd.client_id');
+            ->leftJoin('clients as c', 'c.id', '=', 'cd.client_id')
+            ->where('cd.collection_load_id', (int) $load->id);
 
-        $q->where('cl.is_active', true)
-            ->where('cl.status', 'completed');
+        $this->applyCollectionPaymentDateScope($q, $filters);
 
-        // Rango de fechas de pago
-        if (!empty($filters->periods)) {
-            $q->where(function ($sub) use ($filters) {
-                foreach ($filters->periods as $ym) {
-                    $sub->orWhereRaw("DATE_FORMAT(cd.payment_date, '%Y-%m') = ?", [$ym]);
-                }
-            });
-        } elseif ($filters->period) {
-            $start = \Carbon\Carbon::parse($filters->period . '-01')->startOfMonth();
-            $end   = \Carbon\Carbon::parse($filters->period . '-01')->endOfMonth();
-            $q->whereBetween('cd.payment_date', [$start->toDateString(), $end->toDateString()]);
-        } elseif ($filters->dateFrom && $filters->dateTo) {
-            $q->whereBetween('cd.payment_date', [$filters->dateFrom, $filters->dateTo]);
-        }
-
-        // Filtros de dimensión aplicables a collection_details
-        if ($filters->clientId) {
-            $q->where('cd.client_id', $filters->clientId);
-        }
-        if ($filters->regional) {
-            $q->where(function ($sub) use ($filters) {
-                $sub->where('cd.regional', $filters->regional)
-                    ->orWhere('c.region', $filters->regional);
-            });
-        }
-        if ($filters->channel) {
-            $q->where(function ($sub) use ($filters) {
-                $sub->where('cd.channel', $filters->channel)
-                    ->orWhere('c.channel', $filters->channel);
-            });
-        }
-        if ($filters->uen) {
-            $q->where('c.uen', $filters->uen);
-        }
+        app(DashboardFilterCascadeService::class)->applyCollectionDimensionFilters($q, $filters);
 
         return (float) $q->sum('cd.amount');
     }
@@ -353,14 +416,34 @@ class KpiService
             ->whereYear('period_date', \Carbon\Carbon::parse($periodDate)->year)
             ->whereMonth('period_date', \Carbon\Carbon::parse($periodDate)->month);
 
-        if ($filters->uen) {
-            $q->where('uen', $filters->uen);
+        if (! empty($filters->uens)) {
+            $vals = array_values(array_unique(array_map(static fn ($v) => trim((string) $v), $filters->uens)));
+            $vals = array_values(array_filter($vals, static fn ($v) => $v !== ''));
+            if ($vals !== []) {
+                $q->whereIn(DB::raw('TRIM(uen)'), $vals);
+            }
+        } elseif ($filters->uen) {
+            $q->whereRaw('TRIM(uen) = ?', [trim($filters->uen)]);
         }
-        if ($filters->regional) {
-            $q->where('regional', $filters->regional);
+
+        if (! empty($filters->regionals)) {
+            $vals = array_values(array_unique(array_map(static fn ($v) => trim((string) $v), $filters->regionals)));
+            $vals = array_values(array_filter($vals, static fn ($v) => $v !== ''));
+            if ($vals !== []) {
+                $q->whereIn(DB::raw('TRIM(regional)'), $vals);
+            }
+        } elseif ($filters->regional) {
+            $q->whereRaw('TRIM(regional) = ?', [trim($filters->regional)]);
         }
-        if ($filters->channel) {
-            $q->where('channel', $filters->channel);
+
+        if (! empty($filters->channels)) {
+            $vals = array_values(array_unique(array_map(static fn ($v) => trim((string) $v), $filters->channels)));
+            $vals = array_values(array_filter($vals, static fn ($v) => $v !== ''));
+            if ($vals !== []) {
+                $q->whereIn(DB::raw('TRIM(channel)'), $vals);
+            }
+        } elseif ($filters->channel) {
+            $q->whereRaw('TRIM(channel) = ?', [trim($filters->channel)]);
         }
 
         $total = $q->sum('amount');

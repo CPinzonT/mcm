@@ -5,42 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\CollectionLoad;
 use App\Models\PortfolioLoad;
+use App\Services\Loads\Support\PortfolioLoadTemplate;
 use Illuminate\Support\Facades\Storage;
 
 class LoadDownloadController extends Controller
 {
     public function portfolioTemplate()
     {
-        $headers = [
-            '#',
-            'cuenta',
-            'cliente',
-            'nit',
-            'direccion',
-            'contacto',
-            'telefono',
-            'canal',
-            'uens',
-            'empleado_de_ventas',
-            'regional',
-            'nro_documento',
-            'nro_ref_de_cliente',
-            'tipo',
-            'fecha_contabilizacion',
-            'fecha_activacion',
-            'fecha_vencimiento',
-            'valor_documento',
-            'saldo_pendiente',
-            'moneda',
-            'dias_vencido',
-            'actual',
-            '1_30_dias',
-            '31_60_dias',
-            '61_90_dias',
-            '91_180_dias',
-            '181_360_dias',
-            '361_dias',
-        ];
+        $headers = PortfolioLoadTemplate::headers();
 
         return response()->streamDownload(function () use ($headers): void {
             $stream = fopen('php://output', 'wb');
@@ -67,6 +39,37 @@ class LoadDownloadController extends Controller
             fputcsv($stream, $headers);
             fclose($stream);
         }, 'plantilla-carga-recaudos.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    public function budgetTemplate()
+    {
+        $headers = [
+            'NOMBRE CLIENTE',
+            'REGIONAL',
+            'DESC CANAL',
+            'VENDEDOR',
+            'TIPO TRANSACCION',
+            'NO FACTURA',
+            'FECHA FACTURA',
+            'FECHA VENCIMIENTO',
+            'DIAS VENCIMIENTO',
+            'MONTO INICIAL',
+            'SALDO DEBIDO',
+            '1-90',
+            '>90',
+            'SIN VENCER',
+            'ROTACION',
+            'PPTO',
+            'RECAUDO',
+            'CATEGORIAS',
+            'Fecha de aplicación',
+        ];
+
+        return response()->streamDownload(function () use ($headers): void {
+            $stream = fopen('php://output', 'wb');
+            fputcsv($stream, $headers);
+            fclose($stream);
+        }, 'plantilla-carga-presupuesto.csv', ['Content-Type' => 'text/csv']);
     }
 
     public function portfolioErrors(PortfolioLoad $portfolioLoad)

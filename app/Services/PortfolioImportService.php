@@ -147,7 +147,8 @@ class PortfolioImportService
                     $advisor = $this->resolveAdvisor($data['advisor'] ?? null, $advisorCache);
 
                     $daysOverdue = (int) ($data['days_overdue'] ?? 0);
-                    $riskLevel   = $this->calculateRisk($daysOverdue);
+                    $riskLevel   = app(\App\Services\Risk\RiskClassificationService::class)
+                        ->riskLevelForDays($daysOverdue);
                     $docType     = self::TYPE_MAP[trim($data['document_type'] ?? '')] ?? ($data['document_type'] ?? 'Factura');
                     $pending     = (float) ($data['pending_amount'] ?? 0);
 
@@ -257,17 +258,6 @@ class PortfolioImportService
             );
         }
         return $cache[$name];
-    }
-
-    private function calculateRisk(int $days): string
-    {
-        return match(true) {
-            $days <= 30  => 'normal',
-            $days <= 60  => 'low',
-            $days <= 90  => 'medium',
-            $days <= 180 => 'high',
-            default      => 'critical',
-        };
     }
 
     private function parseDate(mixed $value): ?string

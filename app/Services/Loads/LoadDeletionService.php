@@ -2,6 +2,8 @@
 
 namespace App\Services\Loads;
 
+use App\Models\BudgetLoad;
+use App\Models\BudgetRow;
 use App\Models\CollectionLoad;
 use App\Models\PeriodControl;
 use App\Models\PortfolioDocument;
@@ -55,6 +57,27 @@ class LoadDeletionService
         $this->deleteStoredFile($disk, $path);
     }
 
+    public function deleteBudgetLoad(BudgetLoad $load, User $user): void
+    {
+        $disk = $load->disk;
+        $path = $load->path;
+
+        DB::transaction(function () use ($load): void {
+            BudgetRow::query()->where('budget_load_id', $load->id)->delete();
+            $load->delete();
+        });
+
+        $this->deleteStoredFile($disk, $path);
+    }
+
+    public function cancelBudgetLoad(BudgetLoad $load, User $user): void
+    {
+        DB::transaction(function () use ($load): void {
+            BudgetRow::query()->where('budget_load_id', $load->id)->delete();
+            $load->forceFill(['status' => 'cancelled'])->save();
+        });
+    }
+
     public function deleteCollectionLoad(CollectionLoad $load, User $user): void
     {
         $disk = $load->disk;
@@ -63,6 +86,9 @@ class LoadDeletionService
         DB::transaction(function () use ($load, $user): void {
             $this->assertCollectionLoadCanBeDeleted($load);
             $this->prepareCollectionPeriodControlForDeletion($load);
+
+            $load->details()->delete();
+            $load->errors()->delete();
 
             $this->auditService->record(
                 $load,
@@ -105,8 +131,8 @@ class LoadDeletionService
 
     private function assertCollectionLoadCanBeDeleted(CollectionLoad $load): void
     {
-        if ($load->is_active && $this->hasLaterCollectionPeriods($load)) {
-            throw new DomainException('No se puede eliminar esta carga de recaudos porque ya existen periodos posteriores.');
+        if ($load->is_active && $load->status === 'completed') {
+            throw new DomainException('Anule la carga activa antes de eliminarla.');
         }
     }
 

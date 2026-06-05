@@ -14,6 +14,15 @@ class PortfolioDocument extends Model implements HasMedia
 {
     use SoftDeletes, InteractsWithMedia;
 
+    /** Estados con saldo en gestión (mora, vencido, gestión). */
+    public const OPERATIVE_STATUSES = ['active', 'partial', 'in_process'];
+
+    /**
+     * Estados que componen el total de cartera de la carga (importados + pagados con crédito).
+     * Excluye solo "closed" (documentos arrastrados por comparación de cortes).
+     */
+    public const BALANCE_STATUSES = ['active', 'partial', 'in_process', 'paid'];
+
     protected $fillable = [
         'client_id', 'portfolio_load_id', 'advisor_id', 'account', 'logical_key',
         'document_number', 'client_reference', 'document_type', 'issue_date', 'activation_date', 'due_date',
@@ -64,7 +73,7 @@ class PortfolioDocument extends Model implements HasMedia
 
     public function scopeActive(Builder $query): Builder
     {
-        return $query->whereIn('status', ['active', 'partial', 'in_process']);
+        return $query->whereIn('status', self::OPERATIVE_STATUSES);
     }
 
     public function scopeByRisk(Builder $query, string $risk): Builder

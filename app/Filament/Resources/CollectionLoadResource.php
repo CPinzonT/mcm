@@ -167,7 +167,7 @@ class CollectionLoadResource extends Resource
                     ->requiresConfirmation()
                     ->visible(fn (CollectionLoad $record): bool => auth()->user()?->can('delete', $record) ?? false)
                     ->modalHeading('Eliminar carga de recaudos')
-                    ->modalDescription('Elimina el registro, su archivo fuente y los errores asociados. Las cargas activas deben anularse primero para no comprometer el periodo vigente.')
+                    ->modalDescription('Elimina el registro, su archivo fuente y los detalles asociados. Si la carga está activa y completada, anúlela primero.')
                     ->action(function (CollectionLoad $record): void {
                         try {
                             app(LoadDeletionService::class)->deleteCollectionLoad(

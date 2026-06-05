@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\CollectionLoadResource\Pages;
 
 use App\Filament\Resources\CollectionLoadResource;
-use App\Jobs\ProcessCollectionLoad;
 use App\Models\CollectionLoad;
 use App\Services\Loads\CollectionLoadService;
 use Filament\Notifications\Notification;
@@ -34,7 +33,7 @@ class ListCollectionLoads extends ListRecords
 
     public function table(Table $table): Table
     {
-        return $table
+        return CollectionLoadResource::table($table)
             ->heading('Historial reciente')
             ->paginated([10, 25, 50]);
     }
@@ -58,24 +57,39 @@ class ListCollectionLoads extends ListRecords
         ]);
 
         try {
-            $user = auth()->user();
-            $load = $service->storeAndRegister($this->uploadFile, $this->uploadNotes, $user);
+            @ini_set('max_execution_time', '3600');
+            @ini_set('memory_limit', '1024M');
 
-            ProcessCollectionLoad::dispatch($load->id, $user->id);
+            $result = $service->handleUpload(
+                uploadedFile: $this->uploadFile,
+                notes: $this->uploadNotes,
+                user: auth()->user(),
+            );
 
             $this->lastResult = [
-                'load_id'   => $load->id,
-                'reference' => $load->reference,
-                'status'    => 'pending',
+                'load_id'   => $result->loadId,
+                'reference' => $result->reference,
+                'status'    => $result->status,
             ];
 
             $this->reset('uploadFile', 'uploadNotes');
 
-            Notification::make()
-                ->title('Archivo recibido — procesando en cola')
-                ->body("Carga {$load->reference} encolada. La tabla se actualizará cuando finalice.")
-                ->info()
-                ->send();
+            $notification = Notification::make()
+                ->title(match ($result->status) {
+                    'completed' => 'Carga de recaudos completada',
+                    'rejected'  => 'Carga de recaudos rechazada',
+                    'failed'    => 'Carga de recaudos fallida',
+                    default     => 'Carga de recaudos registrada',
+                })
+                ->body("Referencia {$result->reference} — filas válidas: {$result->validRows}.");
+
+            match ($result->status) {
+                'completed' => $notification->success(),
+                'rejected', 'failed' => $notification->danger(),
+                default => $notification->info(),
+            };
+
+            $notification->send();
         } catch (\Throwable $exception) {
             Notification::make()
                 ->title('No fue posible registrar la carga de recaudos')

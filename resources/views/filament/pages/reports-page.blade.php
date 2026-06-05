@@ -105,8 +105,11 @@ $reportLabels = [
     'promesas_pendientes'  => 'Promesas Pendientes',
     'promesas_incumplidas' => 'Promesas Incumplidas',
     'gestiones_gestor'     => 'Gestiones por Asesor',
+    'acta_compromisos'     => 'Acta de compromisos',
     'analisis_vencimiento' => 'Análisis de Vencimiento',
 ];
+$isActa = $this->reportType === 'acta_compromisos';
+$exportUrl = $isActa ? $this->exportActaUrl() : null;
 $currentLabel = $reportLabels[$this->reportType] ?? null;
 $hasData = $currentLabel && count($this->rows ?? []) > 0;
 $hasGenerated = $currentLabel && isset($this->rows);
@@ -131,8 +134,16 @@ $hasGenerated = $currentLabel && isset($this->rows);
             <div><p class="filter-label">Período desde</p><input type="month" wire:model="periodFrom" class="filter-input"/></div>
             <div><p class="filter-label">Período hasta</p><input type="month" wire:model="periodTo" class="filter-input"/></div>
             <div><p class="filter-label">UEN</p><select wire:model="uen" class="filter-input"><option value="">Todas</option>@foreach($this->uenOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
+            @if($isActa)
+            <div><p class="filter-label">Canal</p><select wire:model="channel" class="filter-input"><option value="">Todos</option>@foreach($this->channelOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
+            <div><p class="filter-label">Fecha sesión</p><input type="date" wire:model="sessionDate" class="filter-input"/></div>
+            <div><p class="filter-label">Hora desde</p><input type="time" wire:model="timeFrom" class="filter-input"/></div>
+            <div><p class="filter-label">Hora hasta</p><input type="time" wire:model="timeTo" class="filter-input"/></div>
+            @endif
             <button wire:click="generateReport" class="btn-primary" style="align-self:flex-end"><x-heroicon-o-play style="width:1rem;height:1rem"/>Generar</button>
-            @if($hasData)
+            @if($isActa && $exportUrl)
+            <a href="{{ $exportUrl }}" target="_blank" class="btn-ghost" style="align-self:flex-end"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar acta</a>
+            @elseif(!$isActa && $hasData)
             <a href="{{ route('admin.exports.portfolio', ['period' => $this->periodFrom]) }}" target="_blank" class="btn-ghost" style="align-self:flex-end"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar</a>
             @endif
         </div>

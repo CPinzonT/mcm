@@ -86,6 +86,17 @@ class ClientResource extends Resource
                     TextInput::make('region')->label('Regional')->maxLength(100),
                     TextInput::make('channel')->label('Canal')->maxLength(100),
                     TextInput::make('uen')->label('UEN')->maxLength(100),
+                    TextInput::make('credit_limit')
+                        ->label('Cupo asignado')
+                        ->numeric()
+                        ->prefix('$')
+                        ->helperText('Cupo del cliente en maestro SAP'),
+                    TextInput::make('payment_term_days')
+                        ->label('Plazo (días)')
+                        ->numeric()
+                        ->integer()
+                        ->suffix('días')
+                        ->helperText('Plazo contratado: vencimiento − fecha documento'),
                 ]),
 
             Section::make('Contacto Responsable')

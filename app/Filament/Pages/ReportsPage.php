@@ -24,6 +24,10 @@ class ReportsPage extends Page
     public string $periodFrom = '';
     public string $periodTo   = '';
     public string $uen        = '';
+    public string $channel    = '';
+    public string $sessionDate = '';
+    public string $timeFrom   = '';
+    public string $timeTo     = '';
 
     public ?array $rows    = null;
     public array  $columns = [];
@@ -43,10 +47,43 @@ class ReportsPage extends Page
             ->pluck('uen', 'uen')->toArray();
     }
 
+    #[Computed]
+    public function channelOptions(): array
+    {
+        return DB::table('clients')
+            ->whereNotNull('channel')->where('channel', '!=', '')
+            ->select('channel')->distinct()->orderBy('channel')
+            ->pluck('channel', 'channel')->toArray();
+    }
+
+    public function exportActaUrl(): ?string
+    {
+        if ($this->reportType !== 'acta_compromisos' || ! $this->sessionDate) {
+            return null;
+        }
+
+        return route('admin.exports.commitment-acta', array_filter([
+            'uen'          => $this->uen ?: null,
+            'channel'      => $this->channel ?: null,
+            'session_date' => $this->sessionDate,
+            'time_from'    => $this->timeFrom ?: null,
+            'time_to'      => $this->timeTo ?: null,
+        ]));
+    }
+
     public function generateReport(): void
     {
         if (!$this->reportType) {
             Notification::make()->title('Selecciona un tipo de reporte')->warning()->send();
+            return;
+        }
+
+        if ($this->reportType === 'acta_compromisos' && ! $this->sessionDate) {
+            Notification::make()
+                ->title('Indica la fecha de la sesión')
+                ->body('La acta de compromisos filtra por fecha y rango horario de gestión.')
+                ->warning()
+                ->send();
             return;
         }
 
@@ -57,6 +94,7 @@ class ReportsPage extends Page
             'promesas_pendientes'  => $this->reportPromesasPendientes(),
             'promesas_incumplidas' => $this->reportPromesasIncumplidas(),
             'gestiones_gestor'     => $this->reportGestionesGestor(),
+            'acta_compromisos'     => $this->reportActaCompromisos(),
             'analisis_vencimiento' => $this->reportAnalisisVencimiento(),
             default                => [[], [], ['total_rows' => 0, 'total_amount' => 0]],
         };
@@ -292,6 +330,115 @@ class ReportsPage extends Page
             ->get()->toArray();
 
         return [$columns, $rows, ['total_rows' => count($rows), 'total_amount' => 0]];
+    }
+
+    private function reportActaCompromisos(): array
+    {
+        $columns = [
+            ['key' => 'advisor',        'label' => 'Asesor'],
+            ['key' => 'client',         'label' => 'Cliente'],
+            ['key' => 'document',       'label' => 'Documento'],
+            ['key' => 'agreement',      'label' => 'Acuerdo'],
+            ['key' => 'commitment_date', 'label' => 'Fecha compromiso'],
+            ['key' => 'contact_datetime', 'label' => 'Fecha / hora gestión'],
+        ];
+
+        $rows = $this->actaCompromisosQuery()
+            ->orderBy('a.name')
+            ->orderBy('c.name')
+            ->get()
+            ->map(function ($row) {
+                $commitment = $row->promised_date
+                    ? \Carbon\Carbon::parse($row->promised_date)->format('d/m/Y')
+                    : ($row->follow_up_date
+                        ? \Carbon\Carbon::parse($row->follow_up_date)->format('d/m/Y')
+                        : '—');
+
+                $time = $row->contact_time ? substr((string) $row->contact_time, 0, 5) : null;
+                $contact = $row->contact_date
+                    ? \Carbon\Carbon::parse($row->contact_date)->format('d/m/Y') . ($time ? " {$time}" : '')
+                    : '—';
+
+                return (object) [
+                    'advisor'          => $row->advisor ?? 'Sin asignar',
+                    'client'           => $row->client,
+                    'document'         => $row->document_number ?? '—',
+                    'agreement'        => trim($row->type_label . ': ' . $row->subject),
+                    'commitment_date'  => $commitment,
+                    'contact_datetime' => $contact,
+                ];
+            })
+            ->toArray();
+
+        return [$columns, $rows, ['total_rows' => count($rows), 'total_amount' => 0]];
+    }
+
+    private function actaCompromisosQuery(): \Illuminate\Database\Query\Builder
+    {
+        $q = DB::table('management_logs as ml')
+            ->join('clients as c', 'c.id', '=', 'ml.client_id')
+            ->leftJoin('advisors as a', 'a.id', '=', 'ml.advisor_id')
+            ->leftJoin('portfolio_documents as pd', 'pd.id', '=', 'ml.portfolio_document_id')
+            ->whereNull('ml.deleted_at');
+
+        if ($this->uen) {
+            $q->where(function ($inner) {
+                $inner->where('ml.uen', $this->uen)
+                    ->orWhere('c.uen', $this->uen);
+            });
+        }
+
+        if ($this->channel) {
+            $q->where(function ($inner) {
+                $inner->where('ml.channel', $this->channel)
+                    ->orWhere('c.channel', $this->channel);
+            });
+        }
+
+        $sessionDate = $this->sessionDate ?: ($this->periodFrom ? $this->periodFrom . '-01' : null);
+        if ($sessionDate) {
+            $q->whereDate('ml.contact_date', $sessionDate);
+        } elseif ($this->periodFrom) {
+            $q->where('ml.contact_date', '>=', $this->periodFrom . '-01');
+        }
+        if ($this->periodTo && ! $this->sessionDate) {
+            $q->where('ml.contact_date', '<=', $this->periodTo . '-28');
+        }
+
+        if ($this->timeFrom) {
+            $q->where('ml.contact_time', '>=', $this->normalizeTimeFilter($this->timeFrom));
+        }
+        if ($this->timeTo) {
+            $q->where('ml.contact_time', '<=', $this->normalizeTimeFilter($this->timeTo, true));
+        }
+
+        return $q->select([
+            DB::raw('COALESCE(a.name, "Sin asignar") as advisor'),
+            'c.name as client',
+            'pd.document_number',
+            'ml.subject',
+            'ml.type',
+            DB::raw('CASE ml.type
+                WHEN "call" THEN "Llamada"
+                WHEN "email" THEN "Correo"
+                WHEN "visit" THEN "Visita"
+                WHEN "agreement" THEN "Acuerdo"
+                WHEN "legal" THEN "Jurídico"
+                ELSE "Otro" END as type_label'),
+            'ml.promised_date',
+            'ml.follow_up_date',
+            'ml.contact_date',
+            'ml.contact_time',
+        ]);
+    }
+
+    private function normalizeTimeFilter(string $time, bool $end = false): string
+    {
+        if (strlen($time) === 5) {
+            return $end ? $time . ':59' : $time . ':00';
+        }
+
+        return $time;
     }
 
     private function reportAnalisisVencimiento(): array

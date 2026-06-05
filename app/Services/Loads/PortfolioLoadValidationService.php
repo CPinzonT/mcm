@@ -6,12 +6,14 @@ use App\Data\Loads\LoadValidationErrorData;
 use App\Data\Loads\LoadValidationResultData;
 use App\Services\Loads\Support\ImportNormalizer;
 use App\Services\Loads\Support\SpreadsheetReader;
+use App\Services\Risk\RiskClassificationService;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Str;
 
 class PortfolioLoadValidationService
 {
+    /** Columnas mínimas del layout SAP / cartera mayo 2026. */
     private const REQUIRED_HEADERS = [
         'cuenta',
         'cliente',
@@ -21,9 +23,18 @@ class PortfolioLoadValidationService
         'fecha_contabilizacion',
         'fecha_vencimiento',
         'valor_documento',
-        'saldo_pendiente',
-        'moneda',
+        'valor_a_recaudar',
     ];
+
+    /** UEN = cartera según saldo en columnas *_ValorARecaudar. */
+    private const UEN_PENDING_FIELDS = [
+        'crc_valor_a_recaudar' => 'CRC',
+        'marcasmcm_valor_a_recaudar' => 'MARCASMCM',
+        'marcasprivadas_valor_a_recaudar' => 'MARCASPRIVADAS',
+        'noaplica_valor_a_recaudar' => 'NOAPLICA',
+    ];
+
+    private const HEADER_SCAN_LIMIT = 40;
 
     private const HEADER_ALIASES = [
         'cuenta' => ['cuenta', 'account'],
@@ -32,27 +43,48 @@ class PortfolioLoadValidationService
         'direccion' => ['direccion', 'direccion_cliente', 'address'],
         'contacto' => ['contacto', 'contact_name', 'contacto_cliente'],
         'telefono' => ['telefono', 'telefonos', 'phone', 'telefono_cliente'],
-        'canal' => ['canal', 'channel', 'grupo'],
+        'canal' => ['canal', 'channel', 'grupo', 'grupo_cliente', 'grupocliente'],
         'uens' => ['uens', 'uen', 'unidad_negocio'],
         'empleado_de_ventas' => ['empleado_de_ventas', 'empleado_de_ventas_', 'empleado_ventas', 'vendedor', 'asesor', 'sales_employee'],
         'regional' => ['regional', 'region'],
-        'nro_documento' => ['nro_documento', 'nro_documento_', 'documento', 'numero_documento', 'nro_doc'],
-        'nro_ref_de_cliente' => ['nro_ref_de_cliente', 'referencia_cliente', 'nro_referencia_cliente', 'customer_reference'],
-        'tipo' => ['tipo', 'tipo_documento', 'document_type'],
-        'fecha_contabilizacion' => ['fecha_contabilizacion', 'fecha_contable', 'fecha_documento', 'posting_date'],
-        'fecha_activacion' => ['fecha_activacion', 'activation_date'],
-        'fecha_vencimiento' => ['fecha_vencimiento', 'due_date', 'vencimiento'],
-        'valor_documento' => ['valor_documento', 'valor', 'monto_documento', 'original_amount'],
-        'saldo_pendiente' => ['saldo_pendiente', 'saldo', 'saldo_actual', 'pending_amount'],
+        'nro_documento' => ['nro_documento', 'nrodocumento', 'documento', 'numero_documento', 'nro_doc'],
+        'nro_ref_de_cliente' => ['nro_ref_de_cliente', 'refdocumento', 'referencia_cliente', 'nro_referencia_cliente', 'customer_reference'],
+        'tipo' => ['tipo', 'tipo_documento', 'tipodocumento', 'document_type'],
+        'fecha_contabilizacion' => ['fecha_contabilizacion', 'fechacontabilizacion', 'fecha_contable', 'fecha_documento', 'posting_date'],
+        'fecha_activacion' => ['fecha_activacion', 'fechacreacion', 'fecha_creacion', 'activation_date'],
+        'fecha_vencimiento' => ['fecha_vencimiento', 'fechavencimiento', 'due_date', 'vencimiento'],
+        'valor_documento' => ['valor_documento', 'valordocumento', 'valor', 'monto_documento', 'original_amount'],
+        'valor_a_recaudar' => [
+            'valor_a_recaudar',
+            'valorarecaudar',
+            'importe_pendiente',
+            'importependiente',
+            'saldo_pendiente',
+            'saldo',
+            'saldo_actual',
+            'pending_amount',
+        ],
+        'saldo_pendiente' => [
+            'saldo_pendiente',
+            'importe_pendiente',
+            'importependiente',
+            'valor_a_recaudar',
+            'valorarecaudar',
+        ],
         'moneda' => ['moneda', 'currency'],
-        'dias_vencido' => ['dias_vencido', 'dias_mora', 'days_overdue'],
+        'dias_vencido' => ['diasvencido', 'dias_vencido', 'dias_mora', 'days_overdue'],
+        'plazo' => ['plazo', 'dias_plazo', 'payment_term', 'term_days', 'plazo_dias'],
+        'crc_valor_a_recaudar' => ['crc_valor_a_recaudar', 'crc_valorarecaudar'],
+        'marcasmcm_valor_a_recaudar' => ['marcasmcm_valor_a_recaudar', 'marcasmcm_valorarecaudar'],
+        'marcasprivadas_valor_a_recaudar' => ['marcasprivadas_valor_a_recaudar', 'marcasprivadas_valorarecaudar'],
+        'noaplica_valor_a_recaudar' => ['noaplica_valor_a_recaudar', 'noaplica_valorarecaudar'],
         'actual' => ['actual', 'corriente', 'bucket_actual'],
         '1_30_dias' => ['1_30_dias', '1_30', '1_30dias', 'bucket_1_30'],
         '31_60_dias' => ['31_60_dias', '31_60', '31_60dias', 'bucket_31_60'],
         '61_90_dias' => ['61_90_dias', '61_90', '61_90dias', 'bucket_61_90'],
         '91_180_dias' => ['91_180_dias', '91_180', '91_180dias', 'bucket_91_180'],
         '181_360_dias' => ['181_360_dias', '181_360', '181_360dias', 'bucket_181_360'],
-        '361_dias' => ['361_dias', '361', '361_mas', 'mas_361', 'bucket_361'],
+        '361_dias' => ['361_dias', '361', '361_mas', 'mas_361', 'bucket_361', '360_dias', '360dias', '360_dias'],
     ];
 
     private const COLLECTION_HEADER_ALIASES = [
@@ -73,7 +105,7 @@ class PortfolioLoadValidationService
         'empleado_de_ventas' => 120,
         'regional' => 100,
         'nro_documento' => 100,
-        'nro_ref_de_cliente' => 100,
+        'nro_ref_de_cliente' => 250,
         'tipo' => 50,
         'moneda' => 10,
     ];
@@ -82,6 +114,7 @@ class PortfolioLoadValidationService
         private readonly SpreadsheetReader $spreadsheetReader,
         private readonly ImportNormalizer $normalizer,
         private readonly PeriodControlService $periodControlService,
+        private readonly RiskClassificationService $riskClassification,
     ) {}
 
     public function validate(string $path, ?string $forcedPeriodKey = null, ?string $sourceName = null): LoadValidationResultData
@@ -92,7 +125,7 @@ class PortfolioLoadValidationService
             ? $this->normalizer->parseMonthKey($forcedPeriodKey)
             : null;
 
-        $headerMap = [];
+        $headerMap = null;
         $errors = [];
         $normalizedRows = [];
         $periods = [];
@@ -100,7 +133,6 @@ class PortfolioLoadValidationService
         $totalRows = 0;
         $emptyRows = 0;
         $duplicateRows = 0;
-        $headerRead = false;
         $periodResolution = [
             'mode' => null,
             'label' => null,
@@ -112,18 +144,15 @@ class PortfolioLoadValidationService
             $rowNumber = $row['row_number'];
             $values = $row['values'];
 
-            if (! $headerRead) {
-                $headerRead = true;
-
+            if ($headerMap === null) {
                 if ($this->normalizer->isEmptyRow($values)) {
-                    $errors[] = LoadValidationErrorData::general('El archivo de cartera esta vacio o no contiene un encabezado util.', 'empty_file');
-                    break;
+                    continue;
                 }
 
-                $headerMap = $this->mapHeaders($values, $aliasLookup);
+                $candidateMap = $this->mapHeaders($values, $aliasLookup);
                 $collectionHeaderMap = $this->mapHeaders($values, $collectionLookup);
 
-                if (count($collectionHeaderMap) >= 2 && count($headerMap) < count($collectionHeaderMap)) {
+                if (count($collectionHeaderMap) >= 2 && ! $this->hasRequiredPortfolioHeaders($candidateMap)) {
                     $errors[] = LoadValidationErrorData::general(
                         'El archivo parece corresponder al modulo de recaudos. Use la carga de recaudos para este archivo.',
                         'wrong_module'
@@ -132,22 +161,15 @@ class PortfolioLoadValidationService
                     break;
                 }
 
-                if (count($headerMap) < 4) {
-                    $errors[] = LoadValidationErrorData::general(
-                        'No fue posible reconocer la estructura de cartera. Revise la plantilla y el encabezado del archivo.',
-                        'invalid_header'
-                    );
-
-                    break;
+                if ($this->hasRequiredPortfolioHeaders($candidateMap)) {
+                    $headerMap = $candidateMap;
+                    continue;
                 }
 
-                $missingHeaders = array_values(array_diff(self::REQUIRED_HEADERS, array_keys($headerMap)));
-
-                if ($missingHeaders !== []) {
+                if ($rowNumber >= self::HEADER_SCAN_LIMIT) {
                     $errors[] = LoadValidationErrorData::general(
-                        'Faltan columnas obligatorias: ' . implode(', ', $missingHeaders) . '.',
-                        'missing_required_headers',
-                        ['missing_headers' => $missingHeaders],
+                        'No fue posible reconocer el encabezado de cartera (Cuenta, Cliente, NIT, NroDocumento, ImportePendiente o columnas UEN *_ValorARecaudar, etc.).',
+                        'invalid_header'
                     );
 
                     break;
@@ -191,8 +213,8 @@ class PortfolioLoadValidationService
             $normalizedRows[] = $normalized;
         }
 
-        if (! $headerRead) {
-            $errors[] = LoadValidationErrorData::general('El archivo de cartera no contiene filas para procesar.', 'empty_file');
+        if ($headerMap === null && $errors === []) {
+            $errors[] = LoadValidationErrorData::general('El archivo de cartera esta vacio o no contiene un encabezado util.', 'empty_file');
         }
 
         $periodKey = null;
@@ -219,11 +241,6 @@ class PortfolioLoadValidationService
                     $normalizedRows,
                 );
 
-                try {
-                    $this->periodControlService->assertPortfolioChronology($periodDate);
-                } catch (DomainException $exception) {
-                    $errors[] = LoadValidationErrorData::general($exception->getMessage(), 'chronology_blocked');
-                }
             } elseif (count($periods) !== 1) {
                 $inferredPeriodKey = $sourceName !== null
                     ? $this->normalizer->inferPortfolioPeriodFromFilename($sourceName, array_keys($periods))
@@ -249,11 +266,6 @@ class PortfolioLoadValidationService
                         $normalizedRows,
                     );
 
-                    try {
-                        $this->periodControlService->assertPortfolioChronology($periodDate);
-                    } catch (DomainException $exception) {
-                        $errors[] = LoadValidationErrorData::general($exception->getMessage(), 'chronology_blocked');
-                    }
                 } else {
                     $periodKey = max(array_keys($periods));
                     $periodDate = $this->normalizer->firstDayOfPeriod($periodKey);
@@ -275,11 +287,6 @@ class PortfolioLoadValidationService
                         $normalizedRows,
                     );
 
-                    try {
-                        $this->periodControlService->assertPortfolioChronology($periodDate);
-                    } catch (DomainException $exception) {
-                        $errors[] = LoadValidationErrorData::general($exception->getMessage(), 'chronology_blocked');
-                    }
                 }
             } else {
                 $periodKey = array_key_first($periods);
@@ -291,11 +298,6 @@ class PortfolioLoadValidationService
                     'period_key' => $periodKey,
                 ];
 
-                try {
-                    $this->periodControlService->assertPortfolioChronology($periodDate);
-                } catch (DomainException $exception) {
-                    $errors[] = LoadValidationErrorData::general($exception->getMessage(), 'chronology_blocked');
-                }
             }
         }
 
@@ -304,6 +306,10 @@ class PortfolioLoadValidationService
                 'No se encontraron filas validas para cartera despues de analizar el archivo.',
                 'no_valid_rows'
             );
+        }
+
+        if ($periodDate !== null && $normalizedRows !== []) {
+            $normalizedRows = $this->applyCutDateToRows($normalizedRows, $periodDate);
         }
 
         return new LoadValidationResultData(
@@ -321,7 +327,8 @@ class PortfolioLoadValidationService
             summary: [
                 'rules' => [
                     'Carga atomica: si existen errores, la version no se activa.',
-                    'Los buckets se recalculan internamente a partir de dias de mora y saldo pendiente.',
+                    'Dias de mora = dias calendario desde fecha de vencimiento hasta el corte del periodo.',
+                    'Los buckets y el riesgo se recalculan con esa mora y el saldo pendiente.',
                     'El periodo debe ser unico y cronologicamente valido.',
                 ],
                 'forced_period_key' => $forcedPeriodKey,
@@ -341,9 +348,43 @@ class PortfolioLoadValidationService
         return $payload;
     }
 
+    private function hasRequiredPortfolioHeaders(array $headerMap): bool
+    {
+        foreach ([
+            'cuenta',
+            'cliente',
+            'nit',
+            'nro_documento',
+            'tipo',
+            'fecha_contabilizacion',
+            'fecha_vencimiento',
+            'valor_documento',
+        ] as $field) {
+            if (! isset($headerMap[$field])) {
+                return false;
+            }
+        }
+
+        if (isset($headerMap['valor_a_recaudar']) || isset($headerMap['saldo_pendiente'])) {
+            return true;
+        }
+
+        foreach (array_keys(self::UEN_PENDING_FIELDS) as $field) {
+            if (isset($headerMap[$field])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function normalizeRow(int $rowNumber, array $payload, array &$rowErrors): ?array
     {
         foreach (self::REQUIRED_HEADERS as $requiredField) {
+            if ($requiredField === 'valor_a_recaudar') {
+                continue;
+            }
+
             if ($this->normalizer->normalizeText($payload[$requiredField] ?? null) === null) {
                 $rowErrors[] = new LoadValidationErrorData(
                     rowNumber: $rowNumber,
@@ -382,32 +423,21 @@ class PortfolioLoadValidationService
         }
 
         $originalAmount = $this->normalizer->parseNumber($payload['valor_documento'] ?? null);
-        $pendingAmount = $this->normalizer->parseNumber($payload['saldo_pendiente'] ?? null);
+        $uenPending = $this->resolveUenAndPendingAmount($payload, $rowErrors, $rowNumber);
+        $pendingAmount = $uenPending['pending'];
+        $resolvedUen = $uenPending['uen'];
 
         if ($originalAmount === null) {
             $rowErrors[] = new LoadValidationErrorData($rowNumber, 'valor_documento', 'invalid_number', 'El valor del documento debe ser numerico.');
         }
 
         if ($pendingAmount === null) {
-            $rowErrors[] = new LoadValidationErrorData($rowNumber, 'saldo_pendiente', 'invalid_number', 'El saldo pendiente debe ser numerico.');
-        }
-
-        $daysOverdue = $this->normalizer->parseNumber($payload['dias_vencido'] ?? null);
-
-        if ($daysOverdue !== null) {
-            $daysOverdue = (int) round($daysOverdue);
-        }
-
-        if (
-            $daysOverdue === null &&
-            $postingDate instanceof CarbonImmutable &&
-            $dueDate instanceof CarbonImmutable
-        ) {
-            $daysOverdue = $this->normalizer->calculateDaysOverdue($dueDate, $postingDate);
-        }
-
-        if ($daysOverdue === null) {
-            $rowErrors[] = new LoadValidationErrorData($rowNumber, 'dias_vencido', 'missing_days', 'No fue posible resolver los dias de vencido a partir de la fecha de vencimiento.');
+            $rowErrors[] = new LoadValidationErrorData(
+                $rowNumber,
+                'valor_a_recaudar',
+                'invalid_number',
+                'El saldo a recaudar debe ser numerico (columna ImportePendiente, ValorARecaudar o suma de CRC/MARCASMCM/MARCASPRIVADAS/NOAPLICA *_ValorARecaudar).',
+            );
         }
 
         if ($rowErrors !== []) {
@@ -416,7 +446,17 @@ class PortfolioLoadValidationService
 
         $providedBuckets = $this->extractProvidedBuckets($payload);
         $providedBucketTotal = array_sum($providedBuckets);
-        $calculatedBuckets = $this->calculateBuckets($pendingAmount, $daysOverdue);
+
+        $daysFromFile = $this->normalizer->parseNumber($payload['dias_vencido'] ?? null);
+        $daysOverdue = $daysFromFile !== null
+            ? max(0, (int) round($daysFromFile))
+            : 0;
+
+        if ($providedBuckets !== [] && abs($providedBucketTotal - $pendingAmount) <= 0.99) {
+            $calculatedBuckets = $providedBuckets;
+        } else {
+            $calculatedBuckets = $this->riskClassification->agingBucketsFor((float) $pendingAmount, $daysOverdue);
+        }
 
         if ($providedBuckets !== [] && abs($providedBucketTotal - $pendingAmount) > 0.99) {
             $rowErrors[] = new LoadValidationErrorData(
@@ -441,13 +481,22 @@ class PortfolioLoadValidationService
             ?? $this->normalizer->normalizeText($payload['cliente'] ?? null, 255)
             ?? ''
         );
-        $clientReference = Str::upper($this->normalizer->normalizeText($payload['nro_ref_de_cliente'] ?? null, 100) ?? '');
+        $clientReference = Str::upper($this->normalizer->normalizeText($payload['nro_ref_de_cliente'] ?? null, 250) ?? '');
         $periodKey = $postingDate->format('Y-m');
         $periodDate = $this->normalizer->firstDayOfPeriod($periodKey)->toDateString();
         $duplicateSignature = implode('|', [$account, $clientIdentity, $documentNumber, $documentType, $clientReference, (string) $pendingAmount]);
 
+        $paymentTermDays = null;
+        $plazoRaw = $this->normalizer->parseNumber($payload['plazo'] ?? null);
+        if ($plazoRaw !== null && $plazoRaw > 0) {
+            $paymentTermDays = (int) round($plazoRaw);
+        } elseif ($postingDate && $dueDate) {
+            $paymentTermDays = max(0, (int) $postingDate->diffInDays($dueDate));
+        }
+
         return [
             'row_number' => $rowNumber,
+            'payment_term_days' => $paymentTermDays > 0 ? $paymentTermDays : null,
             'account' => $account,
             'client_name' => $this->normalizer->normalizeText($payload['cliente'] ?? null, 255),
             'nit' => $this->normalizer->normalizeText($payload['nit'] ?? null, 30),
@@ -455,14 +504,14 @@ class PortfolioLoadValidationService
             'contact' => $this->normalizer->normalizeText($payload['contacto'] ?? null, 120),
             'phone' => $this->normalizer->normalizePhone($payload['telefono'] ?? null, 30),
             'channel' => $this->normalizer->normalizeText($payload['canal'] ?? null, 100),
-            'uen' => $this->normalizer->normalizeText($payload['uens'] ?? null, 100),
+            'uen' => $resolvedUen ?? $this->normalizer->normalizeText($payload['uens'] ?? null, 100),
             'sales_employee' => $this->normalizer->normalizeText($payload['empleado_de_ventas'] ?? null, 120),
             'regional' => $this->normalizer->normalizeText($payload['regional'] ?? null, 100),
             'document_number' => $documentNumber,
-            'client_reference' => $this->normalizer->normalizeText($payload['nro_ref_de_cliente'] ?? null, 100),
+            'client_reference' => $this->normalizer->normalizeText($payload['nro_ref_de_cliente'] ?? null, 250),
             'document_type' => $documentType,
             'issue_date' => $postingDate->toDateString(),
-            'activation_date' => $activationDate?->toDateString(),
+            'activation_date' => ($activationDate ?? $this->normalizer->parseDate($payload['fecha_creacion'] ?? null))?->toDateString(),
             'due_date' => $dueDate?->toDateString(),
             'original_amount' => (float) $originalAmount,
             'pending_amount' => (float) $pendingAmount,
@@ -508,6 +557,52 @@ class PortfolioLoadValidationService
         return $map;
     }
 
+    /**
+     * @return array{pending: ?float, uen: ?string, components: array<string, float>}
+     */
+    private function resolveUenAndPendingAmount(array $payload, array &$rowErrors, int $rowNumber): array
+    {
+        $components = [];
+
+        foreach (self::UEN_PENDING_FIELDS as $field => $label) {
+            $amount = $this->normalizer->parseNumber($payload[$field] ?? null);
+
+            if ($amount !== null && abs($amount) > 0.0001) {
+                $components[$label] = (float) $amount;
+            }
+        }
+
+        $fromComponents = array_sum($components);
+        $declared = $this->normalizer->parseNumber($payload['valor_a_recaudar'] ?? $payload['saldo_pendiente'] ?? null);
+
+        if ($declared !== null && $components !== [] && abs($declared - $fromComponents) > 0.99) {
+            $rowErrors[] = new LoadValidationErrorData(
+                rowNumber: $rowNumber,
+                field: 'valor_a_recaudar',
+                code: 'uen_total_mismatch',
+                message: 'ImportePendiente no coincide con la suma de CRC/MARCASMCM/MARCASPRIVADAS/NOAPLICA ValorARecaudar.',
+                payload: [
+                    'declared' => $declared,
+                    'uen_sum' => $fromComponents,
+                ],
+            );
+        }
+
+        $pending = $declared ?? ($fromComponents != 0.0 ? $fromComponents : 0.0);
+        $uen = null;
+
+        if ($components !== []) {
+            arsort($components);
+            $uen = (string) array_key_first($components);
+        }
+
+        return [
+            'pending' => $pending,
+            'uen' => $uen,
+            'components' => $components,
+        ];
+    }
+
     private function extractProvidedBuckets(array $payload): array
     {
         $buckets = [];
@@ -531,32 +626,32 @@ class PortfolioLoadValidationService
         return $buckets;
     }
 
-    private function calculateBuckets(float $pendingAmount, int $daysOverdue): array
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function applyCutDateToRows(array $rows, CarbonImmutable $periodDate): array
     {
-        $buckets = [
-            'actual' => 0.0,
-            '1_30_dias' => 0.0,
-            '31_60_dias' => 0.0,
-            '61_90_dias' => 0.0,
-            '91_180_dias' => 0.0,
-            '181_360_dias' => 0.0,
-            '361_dias' => 0.0,
-        ];
+        return array_map(function (array $row) use ($periodDate): array {
+            if ($this->rowHasProvidedAgingBuckets($row)) {
+                $row['risk_level'] = $this->riskClassification->riskLevelForDays((int) ($row['days_overdue'] ?? 0));
 
-        $target = match (true) {
-            $pendingAmount <= 0 => 'actual',
-            $daysOverdue <= 0 => 'actual',
-            $daysOverdue <= 30 => '1_30_dias',
-            $daysOverdue <= 60 => '31_60_dias',
-            $daysOverdue <= 90 => '61_90_dias',
-            $daysOverdue <= 180 => '91_180_dias',
-            $daysOverdue <= 360 => '181_360_dias',
-            default => '361_dias',
-        };
+                return $row;
+            }
 
-        $buckets[$target] = round($pendingAmount, 2);
+            return $this->riskClassification->applyToRow($row, $periodDate);
+        }, $rows);
+    }
 
-        return $buckets;
+    private function rowHasProvidedAgingBuckets(array $row): bool
+    {
+        $buckets = $row['aging_buckets'] ?? null;
+
+        if (! is_array($buckets)) {
+            return false;
+        }
+
+        return array_sum(array_map(static fn ($v) => (float) $v, $buckets)) > 0.0001;
     }
 
     private function countErrorRows(array $errors): int

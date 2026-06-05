@@ -71,6 +71,10 @@
     gap: .75rem;
     grid-template-columns: repeat(5, minmax(0,1fr));
 }
+.client-view .cv-kpi-strip.cv-kpi-strip--commercial {
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    margin-top: .75rem;
+}
 
 .client-view .cv-kpi-item {
     background: var(--mcm-surface);
@@ -246,10 +250,137 @@
     box-shadow: 0 0 0 2.5px var(--mcm-accent-soft);
 }
 
+/* Management modal */
+.cv-mgmt-backdrop {
+    align-items: center;
+    background: rgba(15, 23, 42, .45);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 1rem;
+    position: fixed;
+    z-index: 60;
+}
+.cv-mgmt-modal {
+    background: var(--mcm-surface);
+    border: 1px solid var(--mcm-border);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, .18);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    max-width: 42rem;
+    overflow: hidden;
+    width: 100%;
+}
+.cv-mgmt-head {
+    align-items: flex-start;
+    border-bottom: 1px solid var(--mcm-border);
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+}
+.cv-mgmt-kicker { color: var(--mcm-muted); font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.cv-mgmt-title { color: var(--mcm-text-strong); font-size: 1.05rem; font-weight: 700; margin-top: .2rem; }
+.cv-mgmt-sub { color: var(--mcm-muted); font-size: .76rem; margin-top: .25rem; }
+.cv-mgmt-body { overflow: auto; padding: 1rem 1.25rem; }
+.cv-mgmt-types { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .85rem; }
+.cv-mgmt-type {
+    background: var(--mcm-surface-2, var(--mcm-surface));
+    border: 1px solid var(--mcm-border);
+    border-radius: 999px;
+    color: var(--mcm-muted);
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .28rem .65rem;
+}
+.cv-mgmt-type.active { background: var(--mcm-accent-soft); border-color: var(--mcm-accent); color: var(--mcm-accent-strong); }
+.cv-mgmt-grid { display: grid; gap: .65rem; grid-template-columns: 1fr 1fr; }
+.cv-mgmt-full { grid-column: 1 / -1; }
+.cv-mgmt-foot {
+    border-top: 1px solid var(--mcm-border);
+    display: flex;
+    gap: .5rem;
+    justify-content: flex-end;
+    padding: .85rem 1.25rem;
+}
+.cv-mgmt-error { color: var(--mcm-red); font-size: .72rem; margin-top: .2rem; }
+
 /* Portfolio table */
+.client-view .cv-doc-link {
+    color: var(--mcm-accent-strong);
+    text-decoration: none;
+}
+
+.client-view .cv-doc-link:hover {
+    color: var(--mcm-accent);
+    text-decoration: underline;
+}
+
+.client-view .cv-doc-search-bar {
+    align-items: center;
+    background: var(--mcm-surface);
+    border-bottom: 1px solid var(--mcm-border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    padding: .65rem 1.2rem;
+}
+
+.client-view .cv-doc-search-bar .cv-doc-search-input {
+    flex: 1;
+    min-width: 12rem;
+}
+
+.client-view .cv-doc-search-hint {
+    color: var(--mcm-muted);
+    font-size: .72rem;
+    width: 100%;
+}
+
 .client-view .cv-table-wrap {
     overflow-x: auto;
     scrollbar-width: thin;
+}
+
+/* Paginación documentos — Los SVG de Tailwind/Laravel sin tamaño fijo heredan reglas de .mcm-modern-page y se ven gigantes */
+.client-view .cv-docs-pagination {
+    align-items: center;
+    border-top: 1px solid var(--mcm-border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    justify-content: flex-end;
+    padding: .65rem 1.2rem;
+}
+
+.client-view .cv-docs-pagination svg {
+    flex-shrink: 0;
+    height: 1rem !important;
+    max-height: 1rem;
+    max-width: 1rem;
+    vertical-align: middle;
+    width: 1rem !important;
+}
+
+.client-view .cv-docs-pagination nav {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    justify-content: flex-end;
+}
+
+.client-view .cv-docs-pagination a,
+.client-view .cv-docs-pagination span {
+    align-items: center;
+    display: inline-flex !important;
+    justify-content: center;
+    line-height: 1;
+    min-height: 2rem;
+    min-width: 2rem;
 }
 
 .client-view .cv-mora-bar {
@@ -320,10 +451,12 @@
 
 @media (max-width: 1000px) {
     .client-view .cv-kpi-strip   { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    .client-view .cv-kpi-strip.cv-kpi-strip--commercial { grid-template-columns: repeat(3,minmax(0,1fr)); }
     .client-view .cv-main-grid   { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
     .client-view .cv-kpi-strip   { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .client-view .cv-kpi-strip.cv-kpi-strip--commercial { grid-template-columns: 1fr; }
     .client-view .cv-identity     { flex-direction: column; align-items: flex-start; }
     .client-view .cv-identity-actions { width: 100%; }
     .client-view .cv-identity-actions a { flex: 1; }
@@ -334,8 +467,10 @@
 @php
     $c  = $this->record;
     $ps = $this->portfolioSummary;
+    $ckpis = $this->clientCommercialKpis;
     $docs     = $this->documents;
     $timeline = $this->timeline;
+    $exportPortfolioUrl = $this->exportPortfolioUrl();
 
     $initials = collect(explode(' ', $c->name))->filter()->take(2)->map(fn($w) => mb_substr($w,0,1))->implode('');
 
@@ -387,10 +522,8 @@
         <div class="cv-identity-body">
             <div class="cv-identity-name">{{ $c->name }}</div>
             <div class="cv-identity-meta">
-                <span class="cv-identity-code">{{ $c->document_type }} {{ $c->document_number }}</span>
-                @if($c->code)
-                    <span style="color:var(--mcm-border);">·</span>
-                    <span class="cv-identity-code">Código {{ $c->code }}</span>
+                @if($c->document_number)
+                    <span class="cv-identity-code">NIT {{ $c->document_number }}</span>
                 @endif
                 @if(!$c->active)
                     <span class="badge-pill badge-red">Inactivo</span>
@@ -403,6 +536,12 @@
             </div>
         </div>
         <div class="cv-identity-actions">
+            @if($exportPortfolioUrl)
+                <a href="{{ $exportPortfolioUrl }}" target="_blank" rel="noopener" class="btn-ghost">
+                    <x-heroicon-o-arrow-down-tray style="width:.9rem;height:.9rem"/>
+                    Exportar cartera
+                </a>
+            @endif
             <a href="{{ route('filament.admin.resources.clients.edit', ['record' => $c->id]) }}"
                class="btn-ghost">
                 <x-heroicon-o-pencil-square style="width:.9rem;height:.9rem"/>
@@ -416,7 +555,15 @@
         <div class="cv-kpi-item">
             <p class="cv-kpi-label">Saldo total</p>
             <p class="cv-kpi-val mono">${{ number_format($ps['total_balance'], 0, ',', '.') }}</p>
-            <p class="cv-kpi-sub">{{ $ps['total_docs'] }} documento{{ $ps['total_docs'] != 1 ? 's' : '' }}</p>
+            <p class="cv-kpi-sub">
+                {{ $ps['total_docs'] }} documento{{ $ps['total_docs'] != 1 ? 's' : '' }}
+                @if(!empty($ps['cut_date']))
+                    · corte {{ \Carbon\Carbon::parse($ps['cut_date'])->translatedFormat('M Y') }}
+                @endif
+                @if(!empty($ps['consultation_date']))
+                    · mora al {{ \Carbon\Carbon::parse($ps['consultation_date'])->format('d/m/Y') }}
+                @endif
+            </p>
         </div>
         <div class="cv-kpi-item">
             <p class="cv-kpi-label">Saldo vencido</p>
@@ -433,12 +580,49 @@
             <p class="cv-kpi-val {{ $ps['max_overdue'] > 90 ? 'danger' : ($ps['max_overdue'] > 30 ? 'warn' : 'ok') }}">
                 {{ $ps['max_overdue'] }}<small style="font-size:.7em;font-weight:400;color:var(--mcm-muted);">d</small>
             </p>
-            <p class="cv-kpi-sub">días de mora</p>
+            <p class="cv-kpi-sub">desde vencimiento · al {{ \Carbon\Carbon::parse($ps['consultation_date'] ?? today())->format('d/m/Y') }}</p>
         </div>
         <div class="cv-kpi-item">
             <p class="cv-kpi-label">Gestiones</p>
             <p class="cv-kpi-val">{{ count($timeline) }}</p>
             <p class="cv-kpi-sub">en historial</p>
+        </div>
+    </div>
+
+    {{-- Rotación / plazo / cupo (cartera activa + recaudo mes en curso) --}}
+    <div class="cv-kpi-strip cv-kpi-strip--commercial mcm-stagger">
+        <div class="cv-kpi-item">
+            <p class="cv-kpi-label">Cupo</p>
+            <p class="cv-kpi-val mono">${{ number_format($ckpis['cupo'], 0, ',', '.') }}</p>
+            <p class="cv-kpi-sub">
+                @if($ckpis['cupo_es_maestro'])
+                    Cupo asignado en maestro SAP
+                @else
+                    Referencia: suma de montos originales en cartera activa
+                @endif
+            </p>
+        </div>
+        <div class="cv-kpi-item">
+            <p class="cv-kpi-label">Rotación</p>
+            @if($ckpis['rotation_days'] !== null)
+                <p class="cv-kpi-val {{ $ckpis['plazo_days'] && $ckpis['rotation_days'] > $ckpis['plazo_days'] ? 'warn' : '' }}">
+                    {{ number_format($ckpis['rotation_days'], 1, ',', '.') }}<small style="font-size:.65em;font-weight:500;color:var(--mcm-muted);">d</small>
+                </p>
+                <p class="cv-kpi-sub">Días reales de rotación (cartera / recaudo de la carga activa)</p>
+            @else
+                <p class="cv-kpi-val" style="font-size:.95rem;color:var(--mcm-muted);">—</p>
+                <p class="cv-kpi-sub">Sin recaudo en el mes o sin cartera</p>
+            @endif
+        </div>
+        <div class="cv-kpi-item">
+            <p class="cv-kpi-label">Plazo</p>
+            @if($ckpis['plazo_days'] !== null)
+                <p class="cv-kpi-val">{{ (int) $ckpis['plazo_days'] }}<small style="font-size:.65em;font-weight:500;color:var(--mcm-muted);">d</small></p>
+                <p class="cv-kpi-sub">Plazo contratado (vencimiento − emisión)</p>
+            @else
+                <p class="cv-kpi-val" style="font-size:.95rem;color:var(--mcm-muted);">—</p>
+                <p class="cv-kpi-sub">Sin plazo en maestro ni en documentos</p>
+            @endif
         </div>
     </div>
 
@@ -458,12 +642,8 @@
                         <div class="cv-datum-value">{{ $c->name }}</div>
                     </div>
                     <div class="cv-datum">
-                        <div class="cv-datum-label">{{ $c->document_type }}</div>
-                        <div class="cv-datum-value mono">{{ $c->document_number }}</div>
-                    </div>
-                    <div class="cv-datum">
-                        <div class="cv-datum-label">Código</div>
-                        <div class="cv-datum-value mono">{{ $c->code ?? '—' }}</div>
+                        <div class="cv-datum-label">NIT</div>
+                        <div class="cv-datum-value mono">{{ $c->document_number ?? '—' }}</div>
                     </div>
                     <div class="cv-datum">
                         <div class="cv-datum-label">Correo</div>
@@ -562,8 +742,27 @@
             <span class="cv-card-icon"><x-heroicon-o-document-text /></span>
             <span class="cv-card-title">Documentos de cartera</span>
             <span class="badge-pill badge-{{ $ps['overdue_docs'] > 0 ? 'red' : 'gray' }}">
-                {{ $ps['overdue_docs'] }} en mora · {{ $ps['total_docs'] }} total
+                {{ $ps['overdue_docs'] }} en mora · {{ $ps['total_docs'] }} activos
             </span>
+        </div>
+        <div class="cv-doc-search-bar">
+            <input type="search"
+                   wire:model.live.debounce.300ms="docSearch"
+                   class="sd-filter-search cv-doc-search-input"
+                   placeholder="Buscar documento (número, referencia o tipo)…"
+                   autocomplete="off"
+                   spellcheck="false">
+            @if(trim($this->docSearch) !== '')
+                <button type="button" wire:click="clearDocSearch" class="btn-ghost" style="font-size:.72rem;padding:.35rem .65rem;">
+                    Limpiar
+                </button>
+                <span class="cv-doc-search-hint">
+                    {{ $docs->total() }} resultado{{ $docs->total() !== 1 ? 's' : '' }}
+                    @if($docs->hasPages())
+                        · página {{ $docs->currentPage() }} de {{ $docs->lastPage() }}
+                    @endif
+                </span>
+            @endif
         </div>
         <div class="cv-table-wrap">
             <table class="data-table" style="width:100%;">
@@ -577,19 +776,28 @@
                         <th style="text-align:right;">Saldo pendiente</th>
                         <th>Riesgo</th>
                         <th>Estado</th>
+                        <th style="text-align:center;">Gestión</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($docs as $doc)
                     @php
-                        $rb = $riskBadges[$doc->risk_level] ?? ['pill'=>'badge-gray','label'=>$doc->risk_level ?? '—'];
-                        $moraColor = $doc->days_overdue > 90
+                        $liveDays = (int) ($doc->live_days_overdue ?? 0);
+                        $liveRisk = $this->liveRiskLevelForDocument($doc);
+                        $rb = $riskBadges[$liveRisk] ?? ['pill'=>'badge-gray','label'=>$liveRisk ?? '—'];
+                        $moraColor = $liveDays > 90
                             ? 'var(--mcm-red)'
-                            : ($doc->days_overdue > 30 ? 'var(--mcm-amber)' : 'var(--mcm-green)');
-                        $moraPct = min(100, round($doc->days_overdue / $maxOverdueDenominator * 100));
+                            : ($liveDays > 30 ? 'var(--mcm-amber)' : 'var(--mcm-green)');
+                        $moraPct = min(100, round($liveDays / $maxOverdueDenominator * 100));
                     @endphp
                     <tr>
-                        <td style="font-family:ui-monospace,'Courier New',monospace;font-size:.77rem;font-weight:700;color:var(--mcm-text-strong);">{{ $doc->document_number }}</td>
+                        <td style="font-family:ui-monospace,'Courier New',monospace;font-size:.77rem;font-weight:700;">
+                            <a href="{{ \App\Filament\Resources\PortfolioDocumentResource::getUrl('view', ['record' => $doc->id]) }}"
+                               class="cv-doc-link"
+                               title="Ver documento de cartera">
+                                {{ $doc->document_number }}
+                            </a>
+                        </td>
                         <td style="color:var(--mcm-muted);font-size:.78rem;">{{ $doc->document_type ?? '—' }}</td>
                         <td style="color:var(--mcm-muted);font-size:.78rem;">{{ $doc->due_date?->format('d/m/Y') ?? '—' }}</td>
                         <td style="text-align:right;white-space:nowrap;">
@@ -597,8 +805,8 @@
                                 <div class="cv-mora-bar">
                                     <div class="cv-mora-fill" style="width:{{ $moraPct }}%;background:{{ $moraColor }};"></div>
                                 </div>
-                                @if($doc->days_overdue > 0)
-                                    <span class="badge-pill {{ $doc->days_overdue > 90 ? 'badge-red' : ($doc->days_overdue > 30 ? 'badge-amber' : 'badge-green') }}">{{ $doc->days_overdue }}d</span>
+                                @if($liveDays > 0)
+                                    <span class="badge-pill {{ $liveDays > 90 ? 'badge-red' : ($liveDays > 30 ? 'badge-amber' : 'badge-green') }}">{{ $liveDays }}d</span>
                                 @else
                                     <span class="badge-pill badge-gray">Al día</span>
                                 @endif
@@ -617,13 +825,28 @@
                                 {{ match($s) { 'active'=>'Activo','partial'=>'Parcial','in_process'=>'En proceso','closed'=>'Cerrado',default=>$s??'—' } }}
                             </span>
                         </td>
+                        <td style="text-align:center;">
+                            <button type="button"
+                                    wire:click="openManagementModal({{ $doc->id }})"
+                                    class="btn-ghost"
+                                    style="font-size:.72rem;padding:.28rem .55rem;">
+                                Gestionar
+                            </button>
+                        </td>
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="8">
+                        <td colspan="9">
                             <div class="cv-empty">
                                 <x-heroicon-o-document-text />
-                                <p>Sin documentos de cartera registrados para este cliente.</p>
+                                @if(trim($this->docSearch) !== '')
+                                    <p>No hay documentos que coincidan con «{{ trim($this->docSearch) }}».</p>
+                                    <button type="button" wire:click="clearDocSearch" class="btn-ghost" style="margin-top:.5rem;font-size:.75rem;">
+                                        Quitar búsqueda
+                                    </button>
+                                @else
+                                    <p>Sin documentos de cartera registrados para este cliente.</p>
+                                @endif
                             </div>
                         </td>
                     </tr>
@@ -639,15 +862,15 @@
                         <td style="text-align:right;font-family:ui-monospace,'Courier New',monospace;font-size:.82rem;font-weight:780;color:var(--mcm-text-strong);">
                             ${{ number_format($ps['total_balance'], 0, ',', '.') }}
                         </td>
-                        <td colspan="2"></td>
+                        <td colspan="3"></td>
                     </tr>
                 </tfoot>
                 @endif
             </table>
         </div>
         @if($docs->hasPages())
-        <div style="padding:.75rem 1.2rem;border-top:1px solid var(--mcm-border);">
-            {{ $docs->links() }}
+        <div class="cv-docs-pagination" wire:key="docs-pagination-{{ $docs->currentPage() }}">
+            {{ $docs->links('pagination::simple-tailwind') }}
         </div>
         @endif
     </div>
@@ -704,6 +927,10 @@
         </div>
         @endif
     </div>
+
+    @if($showMgmtModal)
+    @include('filament.resources.client-resource.partials.management-modal')
+    @endif
 
 </div>
 </x-filament-panels::page>

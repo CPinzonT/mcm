@@ -4,21 +4,48 @@ namespace App\Services\Loads;
 
 use App\Data\Loads\LoadValidationErrorData;
 use App\Data\Loads\LoadValidationResultData;
+use App\Models\PortfolioLoad;
 use App\Services\Loads\Support\ImportNormalizer;
 use App\Services\Loads\Support\SpreadsheetReader;
-use DomainException;
 
 class CollectionLoadValidationService
 {
+    /** Encabezados SAP / plantilla MCM (CollectionImportService). */
     private const HEADER_ALIASES = [
-        'documento' => ['documento', 'nro_documento', 'numero_documento', 'nro_documento_aplicado', 'cedula', 'nit'],
-        'valor_pagado' => ['valor_pagado', 'valor', 'importe_aplicado', 'applied_amount', 'importe', 'valor_aplicado', 'pago', 'valor_pago'],
-        'fecha_pago' => ['fecha_pago', 'payment_date', 'fecha_recibo', 'fecha_de_recibo', 'fecha_aplicacion', 'fecha_de_aplicacion', 'fecha'],
-        'periodo' => ['periodo', 'period', 'mes', 'periodo_recaudo'],
-        'nro_recibo' => ['nro_recibo', 'recibo', 'nro_de_recibo', 'receipt_number', 'numero_recibo', 'comprobante'],
-        'tipo_doc' => ['tipo_documento_aplicado', 'tipo_documento', 'tipo'],
+        'documento' => [
+            'documento', 'nro_documento', 'numero_documento', 'nro_documento_aplicado',
+            'nro_de_documento_aplicado', 'nrodocaplicado', 'nro_doc_aplicado', 'cedula', 'nit',
+        ],
+        'valor_pagado' => [
+            'valor_pagado', 'valor', 'importe_aplicado', 'applied_amount', 'importe',
+            'valor_aplicado', 'pago', 'valor_pago', 'total_documento',
+        ],
+        'total_pago_recibido' => [
+            'total_pago_recibido', 'totalpagorecibido', 'total_pagorecibido',
+        ],
+        'importe_aplicado_uen' => [
+            'importe_aplicado_uen', 'importeaplicadouen', 'importe_aplicado',
+        ],
+        'fecha_pago' => [
+            'fecha_aplicacion', 'fecha_de_aplicacion', 'fechaaplicacion', 'application_date',
+            'fecha_pago', 'payment_date', 'fecha_recibo', 'fecha_de_recibo', 'fecharecibo', 'fecha',
+        ],
+        'nro_recibo' => [
+            'nro_recibo', 'recibo', 'nro_de_recibo', 'receipt_number', 'numero_recibo',
+            'comprobante', 'nrorecibo', 'nro_de_recibo',
+        ],
+        'id_reconciliacion' => [
+            'id_reconciliacion', 'idreconciliacion', 'id_de_reconciliacion',
+        ],
+        'tipo_doc' => [
+            'tipo_documento_aplicado', 'tipo_documento', 'tipo', 'tipo_doc',
+            'tipodocaplicado', 'tipo_doc_aplicado',
+        ],
         'cliente' => ['cliente', 'client_name', 'nombre_cliente'],
         'vendedor' => ['vendedor', 'asesor', 'seller_name', 'empleado_de_ventas'],
+        'uen' => ['uen', 'unidad_de_negocio'],
+        'grupo' => ['grupo', 'grupo_cliente', 'channel', 'canal'],
+        'regional' => ['regional', 'region'],
         'observacion' => ['observacion', 'observaciones', 'notes', 'detalle', 'descripcion'],
     ];
 
@@ -28,67 +55,64 @@ class CollectionLoadValidationService
         'fecha_contabilizacion' => ['fecha_contabilizacion', 'fecha_contable', 'posting_date'],
     ];
 
+    private const MAX_STORED_ERRORS = 500;
+
+    private const HEADER_SCAN_LIMIT = 40;
+
     public function __construct(
         private readonly SpreadsheetReader $spreadsheetReader,
         private readonly ImportNormalizer $normalizer,
-        private readonly PeriodControlService $periodControlService,
     ) {}
 
-    public function validate(string $path): LoadValidationResultData
+    public function validate(string $path, ?string $sourceFilename = null): LoadValidationResultData
     {
         $collectionLookup = $this->buildAliasLookup(self::HEADER_ALIASES);
         $portfolioLookup = $this->buildAliasLookup(self::PORTFOLIO_HEADER_ALIASES);
 
-        $headerMap = [];
         $errors = [];
         $normalizedRows = [];
-        $candidatePeriods = [];
         $seenDuplicates = [];
         $totalRows = 0;
         $emptyRows = 0;
         $duplicateRows = 0;
-        $firstRowHandled = false;
-        $usesHeader = true;
+        $headerMap = null;
+        $usesHeader = false;
 
         foreach ($this->spreadsheetReader->rows($path) as $row) {
             $rowNumber = $row['row_number'];
             $values = $row['values'];
 
-            if (! $firstRowHandled) {
-                $firstRowHandled = true;
-
+            if ($headerMap === null) {
                 if ($this->normalizer->isEmptyRow($values)) {
-                    $errors[] = LoadValidationErrorData::general('El archivo de recaudos esta vacio.', 'empty_file');
-                    break;
+                    continue;
                 }
 
-                $headerMap = $this->mapHeaders($values, $collectionLookup);
+                $candidateMap = $this->mapHeaders($values, $collectionLookup);
                 $portfolioHeaderMap = $this->mapHeaders($values, $portfolioLookup);
-                $usesHeader = isset($headerMap['documento'], $headerMap['valor_pagado']);
 
-                if (count($portfolioHeaderMap) >= 2 && ! $usesHeader) {
+                if (count($portfolioHeaderMap) >= 2 && ! $this->hasRequiredCollectionHeaders($candidateMap)) {
                     $errors[] = LoadValidationErrorData::general(
                         'El archivo parece corresponder al modulo de cartera. Use la carga de cartera para este archivo.',
                         'wrong_module'
                     );
-
                     break;
                 }
 
-                if (! $usesHeader) {
-                    $headerMap = [
-                        'documento' => 0,
-                        'valor_pagado' => 1,
-                        'fecha_pago' => 2,
-                        'nro_recibo' => 3,
-                        'cliente' => 4,
-                        'vendedor' => 5,
-                        'periodo' => 6,
-                        'observacion' => 7,
-                    ];
-                } else {
+                if ($this->hasRequiredCollectionHeaders($candidateMap)) {
+                    $headerMap = $candidateMap;
+                    $usesHeader = true;
                     continue;
                 }
+
+                if ($rowNumber >= self::HEADER_SCAN_LIMIT) {
+                    $errors[] = LoadValidationErrorData::general(
+                        'No se reconocio el encabezado de recaudos (se esperan columnas como Nro. documento aplicado, Importe aplicado y Fecha de recibo/aplicacion).',
+                        'header_not_found'
+                    );
+                    break;
+                }
+
+                continue;
             }
 
             $totalRows++;
@@ -105,6 +129,8 @@ class CollectionLoadValidationService
             if ($normalized !== null) {
                 $duplicateKey = implode('|', [
                     $normalized['document_number'],
+                    $normalized['client_name'] ?? '',
+                    $normalized['seller_name'] ?? '',
                     $normalized['amount'],
                     $normalized['payment_date'] ?? 'no-date',
                     $normalized['receipt_number'] ?? 'no-receipt',
@@ -120,7 +146,11 @@ class CollectionLoadValidationService
             }
 
             if ($rowErrors !== []) {
-                array_push($errors, ...$rowErrors);
+                foreach ($rowErrors as $rowError) {
+                    if (count($errors) < self::MAX_STORED_ERRORS) {
+                        $errors[] = $rowError;
+                    }
+                }
                 continue;
             }
 
@@ -129,34 +159,24 @@ class CollectionLoadValidationService
                 continue;
             }
 
-            if ($normalized['row_period_key'] !== null) {
-                $candidatePeriods[$normalized['row_period_key']] = ($candidatePeriods[$normalized['row_period_key']] ?? 0) + 1;
-            }
-
             $normalizedRows[] = $normalized;
         }
 
-        if (! $firstRowHandled) {
-            $errors[] = LoadValidationErrorData::general('El archivo de recaudos no contiene filas para analizar.', 'empty_file');
+        if ($headerMap === null && $errors === []) {
+            $errors[] = LoadValidationErrorData::general('El archivo de recaudos esta vacio o no contiene un encabezado util.', 'empty_file');
         }
 
-        $periodKey = null;
-        $periodDate = null;
-
         if ($normalizedRows !== [] && $errors === []) {
-            $periodKey = $this->resolveFinalPeriodKey($candidatePeriods);
-            $periodDate = $this->normalizer->firstDayOfPeriod($periodKey);
+            $hasActivePortfolio = PortfolioLoad::query()
+                ->where('status', 'completed')
+                ->where('is_active', true)
+                ->exists();
 
-            $normalizedRows = array_map(static function (array $row) use ($periodKey, $periodDate): array {
-                $row['period_key'] = $periodKey;
-                $row['period_date'] = $periodDate->toDateString();
-                return $row;
-            }, $normalizedRows);
-
-            try {
-                $this->periodControlService->assertCollectionChronology($periodDate);
-            } catch (DomainException $exception) {
-                $errors[] = LoadValidationErrorData::general($exception->getMessage(), 'period_control_blocked');
+            if (! $hasActivePortfolio) {
+                $errors[] = LoadValidationErrorData::general(
+                    'Antes de cargar recaudos debe existir una carga de cartera activa y completada.',
+                    'no_active_portfolio',
+                );
             }
         }
 
@@ -167,27 +187,46 @@ class CollectionLoadValidationService
             );
         }
 
+        if ($normalizedRows === [] && $errors !== [] && count($errors) >= self::MAX_STORED_ERRORS) {
+            $errors[] = LoadValidationErrorData::general(
+                'Demasiados errores por fila; revise el encabezado y el formato del archivo.',
+                'too_many_row_errors'
+            );
+        }
+
         return new LoadValidationResultData(
             isValid: $errors === [] && $normalizedRows !== [],
             detectedModule: 'collection',
-            periodKey: $periodKey,
-            periodDate: $periodDate,
+            periodKey: null,
+            periodDate: null,
             normalizedRows: $normalizedRows,
             errors: $errors,
             totalRows: $totalRows,
             validRows: count($normalizedRows),
-            errorRows: $this->countErrorRows($errors),
+            errorRows: $this->countErrorRows($errors, $totalRows, count($normalizedRows)),
             emptyRows: $emptyRows,
             duplicateRows: $duplicateRows,
             summary: [
                 'rules' => [
                     'Carga atomica: si existen errores, la version no se activa.',
-                    'El periodo final se resuelve por mayoria entre periodo explicito y fecha de pago.',
-                    'Si una fila no trae periodo ni fecha, hereda el periodo mayoritario de las filas validas.',
+                    'Busca encabezado SAP en las primeras filas (no solo la fila 1).',
+                    'Cruce contra la cartera activa por factura, cliente y vendedor.',
                 ],
                 'uses_header' => $usesHeader,
             ],
         );
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     */
+    private function hasRequiredCollectionHeaders(array $map): bool
+    {
+        $hasAmount = isset($map['valor_pagado'])
+            || isset($map['importe_aplicado_uen'])
+            || isset($map['total_pago_recibido']);
+
+        return isset($map['documento']) && $hasAmount;
     }
 
     private function rowPayload(array $headerMap, array $values): array
@@ -205,33 +244,26 @@ class CollectionLoadValidationService
     {
         $documentNumber = $this->normalizer->normalizeDocumentNumber($payload['documento'] ?? null);
 
-        // Fila sin documento: se salta silenciosamente (igual que mcmdef)
         if ($documentNumber === null) {
             return null;
         }
 
-        $amount = $this->normalizer->parseNumber($payload['valor_pagado'] ?? null);
+        $amount = $this->resolveRowAmount($payload);
 
-        if ($amount === null) {
-            $rowErrors[] = new LoadValidationErrorData($rowNumber, 'valor_pagado', 'invalid_number', 'El valor pagado debe ser numerico y obligatorio.');
+        if ($amount === null || abs($amount) < 0.0001) {
+            return null;
         }
 
         $paymentDate = $this->normalizer->parseDate($payload['fecha_pago'] ?? null);
-        $explicitPeriod = $this->normalizer->parseMonthKey($payload['periodo'] ?? null);
 
-        if (($payload['periodo'] ?? null) && $explicitPeriod === null) {
-            $rowErrors[] = new LoadValidationErrorData($rowNumber, 'periodo', 'invalid_period', 'El periodo informado en la fila no tiene un formato valido.');
-        }
-
-        if (($payload['fecha_pago'] ?? null) && $paymentDate === null) {
+        $fechaRaw = trim((string) ($payload['fecha_pago'] ?? ''));
+        if ($fechaRaw !== '' && $paymentDate === null) {
             $rowErrors[] = new LoadValidationErrorData($rowNumber, 'fecha_pago', 'invalid_date', 'La fecha de pago no es valida.');
         }
 
         if ($rowErrors !== []) {
             return null;
         }
-
-        $rowPeriodKey = $explicitPeriod ?? $paymentDate?->format('Y-m');
 
         return [
             'row_number' => $rowNumber,
@@ -243,9 +275,33 @@ class CollectionLoadValidationService
             'client_name' => $this->normalizer->normalizeText($payload['cliente'] ?? null, 255),
             'seller_name' => $this->normalizer->normalizeText($payload['vendedor'] ?? null, 120),
             'notes' => $this->normalizer->normalizeText($payload['observacion'] ?? null, 1000),
-            'row_period_key' => $rowPeriodKey,
+            'reconciliation_id' => $this->normalizer->normalizeText($payload['id_reconciliacion'] ?? null, 100),
+            'uen' => $this->normalizer->normalizeText($payload['uen'] ?? null, 50),
+            'channel' => $this->normalizer->normalizeText($payload['grupo'] ?? null, 100),
+            'regional' => $this->normalizer->normalizeText($payload['regional'] ?? null, 100),
             'source_payload' => $payload,
         ];
+    }
+
+    private function resolveRowAmount(array $payload): ?float
+    {
+        $importeUen = $this->normalizer->parseNumber($payload['importe_aplicado_uen'] ?? null);
+        $totalPago = $this->normalizer->parseNumber($payload['total_pago_recibido'] ?? null);
+        $legacy = $this->normalizer->parseNumber($payload['valor_pagado'] ?? null);
+
+        if ($importeUen !== null && abs($importeUen) >= 0.0001) {
+            return $importeUen;
+        }
+
+        if ($totalPago !== null && abs($totalPago) >= 0.0001) {
+            return $totalPago;
+        }
+
+        if ($legacy !== null && abs($legacy) >= 0.0001) {
+            return $legacy;
+        }
+
+        return null;
     }
 
     private function buildAliasLookup(array $aliases): array
@@ -279,18 +335,12 @@ class CollectionLoadValidationService
         return $map;
     }
 
-    private function resolveFinalPeriodKey(array $candidatePeriods): string
+    private function countErrorRows(array $errors, int $totalRows, int $validRows): int
     {
-        if ($candidatePeriods === []) {
-            return now()->format('Y-m');
+        if ($validRows === 0 && $totalRows > 0) {
+            return $totalRows;
         }
 
-        arsort($candidatePeriods);
-        return (string) array_key_first($candidatePeriods);
-    }
-
-    private function countErrorRows(array $errors): int
-    {
         $keys = [];
 
         foreach ($errors as $error) {

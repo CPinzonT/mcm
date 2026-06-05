@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Auth\Responses\LoginResponse as CustomLoginResponse;
+use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\StrategicDashboard;
 use App\Models\BrandingProfile;
@@ -15,6 +16,7 @@ use Filament\Navigation\NavigationGroup;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
 use Filament\Widgets\AccountWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -39,16 +41,16 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->login()
+            ->login(Login::class)
             ->homeUrl(fn (): string => StrategicDashboard::getUrl(panel: 'admin'))
             ->brandName(fn (): string => $this->resolveBrandName())
             ->brandLogo(fn (): ?string => $this->resolveBrandLogo())
             ->darkModeBrandLogo(fn (): ?string => $this->resolveBrandLogo())
-            ->brandLogoHeight('2rem')
+            ->brandLogoHeight('2.35rem')
             ->colors([
-                'primary' => Color::hex('#1E5AA8'),
+                'primary' => Color::hex('#2852a0'),
                 'gray'    => Color::Slate,
-                'info'    => Color::hex('#3B82F6'),
+                'info'    => Color::hex('#5b9bd5'),
                 'success' => Color::hex('#22C55E'),
                 'warning' => Color::hex('#F59E0B'),
                 'danger'  => Color::hex('#EF4444'),
@@ -80,7 +82,11 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ])
+            ->renderHook(
+                PanelsRenderHook::STYLES_AFTER,
+                fn (): string => view('filament.partials.mcm-panel-theme')->render(),
+            );
     }
 
     private function resolveBrandName(): string
@@ -93,7 +99,7 @@ class AdminPanelProvider extends PanelProvider
         $logoPath = $this->getBrandingProfile()?->logo_path;
 
         if (!$logoPath) {
-            return null;
+            return asset('images/mcm-logo.svg');
         }
 
         if (str_starts_with($logoPath, 'http://') || str_starts_with($logoPath, 'https://')) {

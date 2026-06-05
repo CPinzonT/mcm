@@ -39,10 +39,6 @@ class CollectionDetailResource extends Resource
         return $table
             ->defaultSort('id', 'desc')
             ->columns([
-                TextColumn::make('period_key')
-                    ->label('Periodo')
-                    ->badge()
-                    ->searchable(),
                 TextColumn::make('document_number')
                     ->label('Documento')
                     ->searchable()
@@ -72,6 +68,8 @@ class CollectionDetailResource extends Resource
                         ConciliationService::STATUS_NO_INVOICE      => 'gray',
                         ConciliationService::STATUS_TYPE_MISMATCH   => 'warning',
                         ConciliationService::STATUS_PERIOD_MISMATCH => 'info',
+                        ConciliationService::STATUS_CLIENT_MISMATCH => 'warning',
+                        ConciliationService::STATUS_SELLER_MISMATCH => 'warning',
                         default                                      => 'gray',
                     })
                     ->formatStateUsing(fn (?string $state): string => match ($state) {
@@ -81,6 +79,8 @@ class CollectionDetailResource extends Resource
                         ConciliationService::STATUS_NO_INVOICE      => 'Sin factura',
                         ConciliationService::STATUS_TYPE_MISMATCH   => 'Tipo diferente',
                         ConciliationService::STATUS_PERIOD_MISMATCH => 'Periodo diferente',
+                        ConciliationService::STATUS_CLIENT_MISMATCH => 'Cliente diferente',
+                        ConciliationService::STATUS_SELLER_MISMATCH => 'Vendedor diferente',
                         default                                      => 'Sin conciliar',
                     }),
                 TextColumn::make('bucket')
@@ -101,14 +101,6 @@ class CollectionDetailResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                SelectFilter::make('period_key')
-                    ->label('Periodo')
-                    ->options(fn () => CollectionDetail::query()
-                        ->distinct()
-                        ->orderByDesc('period_key')
-                        ->pluck('period_key', 'period_key')
-                        ->filter()
-                        ->toArray()),
                 SelectFilter::make('reconciliation_status')
                     ->label('Estado conciliación')
                     ->options([
@@ -118,6 +110,8 @@ class CollectionDetailResource extends Resource
                         ConciliationService::STATUS_NO_INVOICE      => 'Sin factura',
                         ConciliationService::STATUS_TYPE_MISMATCH   => 'Tipo diferente',
                         ConciliationService::STATUS_PERIOD_MISMATCH => 'Periodo diferente',
+                        ConciliationService::STATUS_CLIENT_MISMATCH => 'Cliente diferente',
+                        ConciliationService::STATUS_SELLER_MISMATCH => 'Vendedor diferente',
                     ]),
                 SelectFilter::make('bucket')
                     ->label('Bucket mora')
@@ -136,18 +130,7 @@ class CollectionDetailResource extends Resource
                 Action::make('export')
                     ->label('Exportar XLSX')
                     ->icon('heroicon-o-arrow-down-tray')
-                    ->form([
-                        \Filament\Forms\Components\Select::make('period_key')
-                            ->label('Periodo')
-                            ->options(fn () => CollectionDetail::query()
-                                ->distinct()
-                                ->orderByDesc('period_key')
-                                ->pluck('period_key', 'period_key')
-                                ->filter()
-                                ->toArray())
-                            ->required(),
-                    ])
-                    ->action(fn (array $data) => app(ExportService::class)->exportCollectionDetails($data['period_key'])),
+                    ->action(fn () => app(ExportService::class)->exportCollectionDetails()),
             ])
             ->paginated([25, 50, 100]);
     }

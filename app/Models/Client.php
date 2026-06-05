@@ -13,13 +13,17 @@ class Client extends Model
     protected $fillable = [
         'code', 'name', 'document_type', 'document_number',
         'email', 'phone', 'address', 'city', 'region',
-        'channel', 'uen', 'contact_name', 'contact_email',
-        'contact_phone', 'active', 'notes',
+        'channel', 'uen', 'credit_limit', 'payment_term_days',
+        'contact_name', 'contact_email', 'contact_phone', 'active', 'notes',
     ];
 
     protected function casts(): array
     {
-        return ['active' => 'boolean'];
+        return [
+            'active' => 'boolean',
+            'credit_limit' => 'decimal:2',
+            'payment_term_days' => 'integer',
+        ];
     }
 
     public function portfolioDocuments(): HasMany

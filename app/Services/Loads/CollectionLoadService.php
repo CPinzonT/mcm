@@ -9,6 +9,7 @@ use App\Models\CollectionLoad;
 use App\Models\PortfolioDocument;
 use App\Models\User;
 use App\Services\ConciliationService;
+use App\Services\Loads\Concerns\ResolvesCollectionPortfolioDocument;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -16,6 +17,8 @@ use Illuminate\Support\Str;
 
 class CollectionLoadService
 {
+    use ResolvesCollectionPortfolioDocument;
+
     public function __construct(
         private readonly CollectionLoadValidationService $validationService,
         private readonly PeriodControlService $periodControlService,
@@ -55,7 +58,7 @@ class CollectionLoadService
         $load         = $this->storeAndRegister($uploadedFile, $notes, $user);
         $absolutePath = Storage::disk('local')->path($load->path);
 
-        $validation = $this->validationService->validate($absolutePath);
+        $validation = $this->validationService->validate($absolutePath, $uploadedFile->getClientOriginalName());
 
         $this->persistValidationState($load, $validation);
 
@@ -79,64 +82,69 @@ class CollectionLoadService
 
         try {
             DB::transaction(function () use ($load, $validation, $user): void {
-                $version = $this->periodControlService->nextCollectionVersion($validation->periodDate);
+                $version = $this->periodControlService->nextCollectionVersion();
 
                 $load->forceFill([
                     'status' => 'processing',
-                    'period_key' => $validation->periodKey,
-                    'period_date' => $validation->periodDate?->toDateString(),
+                    'period_key' => null,
+                    'period_date' => null,
                     'version' => $version,
                 ])->save();
 
                 $clientCache = [];
                 $detailCount = 0;
                 $totalCollected = 0.0;
+                $portfolioIndex = $this->buildPortfolioDocumentIndex();
+                $now = now()->toDateTimeString();
 
-                foreach ($validation->normalizedRows as $row) {
-                    $portfolioDocument = PortfolioDocument::query()
-                        ->where('document_number', $row['document_number'])
-                        ->where('period_date', $validation->periodDate?->toDateString())
-                        ->whereHas('portfolioLoad', fn ($query) => $query->where('is_active', true)->where('status', 'completed'))
-                        ->latest('id')
-                        ->first();
+                foreach (array_chunk($validation->normalizedRows, 400) as $chunk) {
+                    $batch = [];
 
-                    $client = $portfolioDocument?->client ?? $this->resolveClient($row, $clientCache);
-                    $pendingAfter = $portfolioDocument
-                        ? max(0, (float) $portfolioDocument->pending_amount - (float) $row['amount'])
-                        : null;
+                    foreach ($chunk as $row) {
+                        $portfolioDocument = $this->resolveCollectionPortfolioDocument($row, $portfolioIndex);
+                        $client = $portfolioDocument?->client ?? $this->resolveClient($row, $clientCache);
+                        $pendingAfter = $portfolioDocument
+                            ? max(0, (float) $portfolioDocument->pending_amount - (float) $row['amount'])
+                            : null;
 
-                    CollectionDetail::query()->create([
-                        'collection_load_id' => $load->id,
-                        'row_number' => $row['row_number'],
-                        'client_id' => $client->id,
-                        'client_name' => $client->name,
-                        'portfolio_document_id' => $portfolioDocument?->id,
-                        'document_number' => $row['document_number'],
-                        'document_type' => $row['document_type'] ?? null,
-                        'receipt_number' => $row['receipt_number'],
-                        'applied_document_type' => $portfolioDocument?->document_type ?? $row['document_type'] ?? null,
-                        'amount' => $row['amount'],
-                        'applied_amount' => $row['amount'],
-                        'pending_amount_after' => $pendingAfter,
-                        'payment_date' => $row['payment_date'],
-                        'notes' => $row['notes'],
-                        'regional' => $client->region,
-                        'channel' => $client->channel,
-                        'uen' => $client->uen,
-                        'seller_name' => $row['seller_name'],
-                        'source_payload' => $row['source_payload'],
-                        'period_key' => $validation->periodKey,
-                        'period_date' => $validation->periodDate?->toDateString(),
-                    ]);
+                        $batch[] = [
+                            'collection_load_id' => $load->id,
+                            'row_number' => $row['row_number'],
+                            'client_id' => $client->id,
+                            'client_name' => $client->name,
+                            'portfolio_document_id' => $portfolioDocument?->id,
+                            'document_number' => $row['document_number'],
+                            'document_type' => $row['document_type'] ?? null,
+                            'receipt_number' => $row['receipt_number'],
+                            'reconciliation_id' => $row['reconciliation_id'] ?? null,
+                            'applied_document_type' => $portfolioDocument?->document_type ?? $row['document_type'] ?? null,
+                            'amount' => $row['amount'],
+                            'applied_amount' => $row['amount'],
+                            'pending_amount_after' => $pendingAfter,
+                            'payment_date' => $row['payment_date'],
+                            'notes' => $row['notes'],
+                            'regional' => $row['regional'] ?? $client->region,
+                            'channel' => $row['channel'] ?? $client->channel,
+                            'uen' => $row['uen'] ?? $client->uen,
+                            'seller_name' => $row['seller_name'],
+                            'source_payload' => json_encode($row['source_payload'] ?? [], JSON_UNESCAPED_UNICODE),
+                            'period_key' => null,
+                            'period_date' => null,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
 
-                    $detailCount++;
-                    $totalCollected += (float) $row['amount'];
+                        $detailCount++;
+                        $totalCollected += (float) $row['amount'];
+                    }
+
+                    DB::table('collection_details')->insert($batch);
                 }
 
                 $load->forceFill([
                     'status' => 'completed',
-                    'period_key' => $validation->periodKey,
-                    'period_date' => $validation->periodDate?->toDateString(),
+                    'period_key' => null,
+                    'period_date' => null,
                     'version' => $version,
                     'processed_rows' => count($validation->normalizedRows),
                     'detail_count' => $detailCount,
@@ -190,8 +198,8 @@ class CollectionLoadService
     private function persistValidationState(CollectionLoad $load, $validation): void
     {
         $load->forceFill([
-            'period_key' => $validation->periodKey,
-            'period_date' => $validation->periodDate?->toDateString(),
+            'period_key' => null,
+            'period_date' => null,
             'total_rows' => $validation->totalRows,
             'valid_rows' => $validation->validRows,
             'error_rows' => $validation->errorRows,
@@ -221,8 +229,14 @@ class CollectionLoadService
 
         if ($row['client_name']) {
             $client = Client::query()
-                ->where('name', $row['client_name'])
+                ->whereRaw('UPPER(TRIM(name)) = ?', [mb_strtoupper(trim($row['client_name']))])
                 ->first();
+
+            if (! $client) {
+                $client = Client::query()
+                    ->get(['id', 'name'])
+                    ->first(fn (Client $candidate) => $this->namesMatchForCollection($row['client_name'], $candidate->name));
+            }
 
             if (! $client) {
                 $client = Client::query()->create([

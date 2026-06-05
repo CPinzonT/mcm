@@ -2,10 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\Client;
 use App\Models\CollectionDetail;
 use App\Models\CollectionReconciliation;
+use App\Models\ManagementLog;
 use App\Models\PortfolioDocument;
 use App\Models\ReportTemplate;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Writer\XLSX\Writer as XlsxWriter;
@@ -19,23 +23,24 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ExportService
 {
-    public function exportCollectionDetails(string $periodKey): StreamedResponse
+    public function exportCollectionDetails(?string $periodKey = null): StreamedResponse
     {
         $headers = [
-            'Periodo', 'Documento', 'Cliente', 'Nro. Recibo', 'Tipo Doc',
+            'Documento', 'Cliente', 'Nro. Recibo', 'Tipo Doc',
             'Importe Aplicado', 'Saldo Tras Pago', 'Fecha Pago',
             'Regional', 'Canal', 'UEN', 'Vendedor',
             'Bucket Mora', 'Estado Conciliación', 'Notas',
         ];
 
-        $filename = "recaudos_{$periodKey}_" . now()->format('Ymd_His') . '.xlsx';
+        $filename = 'recaudos_' . now()->format('Ymd_His') . '.xlsx';
 
-        $query = CollectionDetail::query()
-            ->where('period_key', $periodKey)
-            ->orderBy('id');
+        $query = CollectionDetail::query()->orderBy('id');
+
+        if ($periodKey !== null && $periodKey !== '') {
+            $query->where('period_key', $periodKey);
+        }
 
         $mapper = fn ($r) => [
-            $r->period_key,
             $r->document_number,
             $r->client_name,
             $r->receipt_number,
@@ -55,23 +60,23 @@ class ExportService
         return $this->buildXlsxChunked($filename, $headers, $query, $mapper);
     }
 
-    public function exportReconciliation(string $periodKey): StreamedResponse
+    public function exportReconciliation(?string $periodKey = null): StreamedResponse
     {
         $headers = [
-            'Periodo Recaudo', 'Periodo Cartera', 'Documento', 'Cliente Recaudo', 'Cliente Cartera',
+            'Documento', 'Cliente Recaudo', 'Cliente Cartera',
             'Valor Factura', 'Importe Aplicado', 'Saldo Cartera', 'Diferencia', 'Saldo Resultante',
             'Estado', 'Nivel Confianza', 'Conciliado En',
         ];
 
-        $filename = "conciliacion_{$periodKey}_" . now()->format('Ymd_His') . '.xlsx';
+        $filename = 'conciliacion_' . now()->format('Ymd_His') . '.xlsx';
 
-        $query = CollectionReconciliation::query()
-            ->where('period_collection', $periodKey)
-            ->orderBy('id');
+        $query = CollectionReconciliation::query()->orderBy('id');
+
+        if ($periodKey !== null && $periodKey !== '') {
+            $query->where('period_collection', $periodKey);
+        }
 
         $mapper = fn ($r) => [
-            $r->period_collection,
-            $r->period_portfolio,
             $r->document_number,
             $r->client_collection,
             $r->client_portfolio,
@@ -123,6 +128,76 @@ class ExportService
         $filename = "cartera_{$periodKey}_" . now()->format('Ymd_His') . '.xlsx';
 
         return $this->buildXlsx($filename, $headers, $data);
+    }
+
+    public function exportCommitmentActa(
+        string $sessionDate,
+        ?string $uen = null,
+        ?string $channel = null,
+        ?string $timeFrom = null,
+        ?string $timeTo = null,
+    ): StreamedResponse {
+        $headers = [
+            'Asesor', 'Cliente', 'Documento', 'Acuerdo', 'Fecha compromiso',
+            'Fecha gestión', 'Hora', 'UEN', 'Canal', 'Observación',
+        ];
+
+        $filename = 'acta_compromisos_' . str_replace('-', '', $sessionDate) . '_' . now()->format('His') . '.xlsx';
+
+        $query = ManagementLog::query()
+            ->with(['advisor:id,name', 'client:id,name,uen,channel', 'portfolioDocument:id,document_number'])
+            ->whereDate('contact_date', $sessionDate)
+            ->orderBy('contact_time')
+            ->orderBy('id');
+
+        if ($uen) {
+            $query->where(function ($q) use ($uen) {
+                $q->where('uen', $uen)->orWhereHas('client', fn ($c) => $c->where('uen', $uen));
+            });
+        }
+
+        if ($channel) {
+            $query->where(function ($q) use ($channel) {
+                $q->where('channel', $channel)->orWhereHas('client', fn ($c) => $c->where('channel', $channel));
+            });
+        }
+
+        if ($timeFrom) {
+            $query->where('contact_time', '>=', $this->normalizeExportTime($timeFrom));
+        }
+        if ($timeTo) {
+            $query->where('contact_time', '<=', $this->normalizeExportTime($timeTo, true));
+        }
+
+        $mapper = function (ManagementLog $log) {
+            $commitment = $log->promised_date?->format('Y-m-d')
+                ?? $log->follow_up_date?->format('Y-m-d')
+                ?? '';
+
+            return [
+                $log->advisor?->name ?? 'Sin asignar',
+                $log->client?->name ?? '',
+                $log->portfolioDocument?->document_number ?? '',
+                trim($log->getTypeLabel() . ': ' . $log->subject),
+                $commitment,
+                $log->contact_date?->format('Y-m-d') ?? '',
+                $log->contact_time ? substr((string) $log->contact_time, 0, 8) : '',
+                $log->uen ?? $log->client?->uen ?? '',
+                $log->channel ?? $log->client?->channel ?? '',
+                $log->description,
+            ];
+        };
+
+        return $this->buildXlsxChunked($filename, $headers, $query, $mapper);
+    }
+
+    private function normalizeExportTime(string $time, bool $end = false): string
+    {
+        if (strlen($time) === 5) {
+            return $end ? $time . ':59' : $time . ':00';
+        }
+
+        return $time;
     }
 
     private function buildXlsxChunked(
@@ -354,16 +429,19 @@ class ExportService
         ]);
     }
 
-    public function exportAgingReport(string $periodKey, ?int $templateId = null): StreamedResponse
+    public function exportAgingReport(string $periodKey, ?int $templateId = null, ?int $clientId = null): StreamedResponse
     {
         $template = $this->resolveAgingTemplate($templateId);
-        $columns  = $this->resolveAgingColumns($template);
+        $columns  = $this->resolveAgingColumns($template, $clientId);
         $headers  = array_map(fn (array $column): string => $column['label'], $columns);
 
+        $client = $clientId
+            ? Client::query()->find($clientId, ['id', 'name', 'document_number'])
+            : null;
+
         $query = PortfolioDocument::query()
-            ->whereHas('portfolioLoad', fn ($q) => $q->where('is_active', true)->where('status', 'completed'))
-            ->where('period_date', 'like', $periodKey . '%')
-            ->whereIn('status', ['active', 'partial', 'in_process'])
+            ->whereIn('status', PortfolioDocument::BALANCE_STATUSES)
+            ->whereNull('deleted_at')
             ->with(['client:id,name,document_number,region,channel,uen', 'advisor:id,name'])
             ->orderByRaw('CASE
                 WHEN days_overdue <= 0 THEN 0
@@ -374,7 +452,32 @@ class ExportService
                 WHEN days_overdue <= 180 THEN 5
                 WHEN days_overdue <= 360 THEN 6
                 ELSE 7
-            END, client_id');
+            END, document_number');
+
+        if ($clientId) {
+            $loadId = DB::table('portfolio_loads')
+                ->where('is_active', true)
+                ->where('status', 'completed')
+                ->orderByDesc('period_date')
+                ->orderByDesc('version')
+                ->value('id');
+
+            if ($loadId) {
+                $query->where('portfolio_load_id', (int) $loadId);
+                $cut = DB::table('portfolio_loads')->where('id', $loadId)->value('period_date');
+                if ($cut) {
+                    $query->whereDate('period_date', $cut);
+                }
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+
+            $query->where('client_id', $clientId);
+        } else {
+            $query->whereHas('portfolioLoad', fn ($q) => $q->where('is_active', true)->where('status', 'completed'))
+                ->where('period_date', 'like', $periodKey . '%')
+                ->whereIn('status', ['active', 'partial', 'in_process']);
+        }
 
         if ($template && $template->type === 'client') {
             if ($template->client_id) {
@@ -398,14 +501,27 @@ class ExportService
         })->toArray();
 
         $templateSuffix = $template?->slug ? '_' . $template->slug : '';
-        $filename = "aging_{$periodKey}{$templateSuffix}_" . now()->format('Ymd_His') . '.xlsx';
+        if ($client) {
+            $slug = Str::slug($client->name) ?: 'cliente';
+            $nit  = preg_replace('/\D+/', '', (string) $client->document_number) ?: 'sin-nit';
+            $filename = "cartera_{$slug}_{$nit}_{$periodKey}_" . now()->format('Ymd_His') . '.xlsx';
+        } else {
+            $filename = "aging_{$periodKey}{$templateSuffix}_" . now()->format('Ymd_His') . '.xlsx';
+        }
 
         $branding = $template?->brandingProfile;
 
+        $reportTitle = $template?->title ?: 'Reporte Aging de Cartera';
+        $reportSubtitle = $template?->subtitle;
+        if ($client) {
+            $reportTitle = $client->name;
+            $reportSubtitle = 'NIT ' . ($client->document_number ?: '—');
+        }
+
         return $this->buildXlsx($filename, $headers, $data, [
-            'show_header' => (bool) ($template?->show_header ?? true),
-            'title' => $template?->title ?: 'Reporte Aging de Cartera',
-            'subtitle' => $template?->subtitle,
+            'show_header' => $client ? true : (bool) ($template?->show_header ?? true),
+            'title' => $reportTitle,
+            'subtitle' => $reportSubtitle,
             'period' => $periodKey,
             'show_footer' => (bool) ($template?->show_footer ?? false),
             'footer_text' => $branding?->footer_text,
@@ -437,10 +553,10 @@ class ExportService
             ->find($templateId);
     }
 
-    private function resolveAgingColumns(?ReportTemplate $template): array
+    private function resolveAgingColumns(?ReportTemplate $template, ?int $clientId = null): array
     {
         if ($template && $template->columns->isNotEmpty()) {
-            return $template->columns
+            $columns = $template->columns
                 ->map(fn ($column): array => [
                     'field_key' => $column->field_key,
                     'label'     => $column->label ?: $column->field_key,
@@ -450,24 +566,74 @@ class ExportService
                 ])
                 ->values()
                 ->all();
+        } elseif ($clientId) {
+            $columns = [
+                ['field_key' => 'document_number', 'label' => 'Documento', 'format' => 'text', 'align' => 'left', 'width' => '18'],
+                ['field_key' => 'document_type', 'label' => 'Tipo', 'format' => 'text', 'align' => 'left', 'width' => '14'],
+                ['field_key' => 'advisor.name', 'label' => 'Asesor', 'format' => 'text', 'align' => 'left', 'width' => '24'],
+                ['field_key' => 'issue_date', 'label' => 'Fecha emisión', 'format' => 'date', 'align' => 'center', 'width' => '14'],
+                ['field_key' => 'due_date', 'label' => 'Fecha vencimiento', 'format' => 'date', 'align' => 'center', 'width' => '14'],
+                ['field_key' => 'days_overdue', 'label' => 'Días de mora', 'format' => 'integer', 'align' => 'right', 'width' => '12'],
+                ['field_key' => 'original_amount', 'label' => 'Valor original', 'format' => 'currency', 'align' => 'right', 'width' => '16'],
+                ['field_key' => 'pending_amount', 'label' => 'Saldo pendiente', 'format' => 'currency', 'align' => 'right', 'width' => '16'],
+                ['field_key' => 'status', 'label' => 'Estado', 'format' => 'text', 'align' => 'left', 'width' => '12'],
+                ['field_key' => 'aging_bucket', 'label' => 'Rango de mora', 'format' => 'text', 'align' => 'left', 'width' => '14'],
+                ['field_key' => 'risk_level', 'label' => 'Riesgo', 'format' => 'text', 'align' => 'left', 'width' => '12'],
+                ['field_key' => 'client.uen', 'label' => 'UEN', 'format' => 'text', 'align' => 'left', 'width' => '12'],
+                ['field_key' => 'client.channel', 'label' => 'Canal', 'format' => 'text', 'align' => 'left', 'width' => '12'],
+            ];
+        } else {
+            $columns = [
+                ['field_key' => 'document_number', 'label' => 'Factura', 'format' => 'text', 'align' => 'left', 'width' => null],
+                ['field_key' => 'document_type', 'label' => 'Tipo de documento', 'format' => 'text', 'align' => 'left', 'width' => null],
+                ['field_key' => 'due_date', 'label' => 'Fecha de vencimiento', 'format' => 'date', 'align' => 'center', 'width' => null],
+                ['field_key' => 'days_overdue', 'label' => 'Días de mora', 'format' => 'integer', 'align' => 'right', 'width' => null],
+                ['field_key' => 'original_amount', 'label' => 'Valor original', 'format' => 'currency', 'align' => 'right', 'width' => null],
+                ['field_key' => 'pending_amount', 'label' => 'Saldo', 'format' => 'currency', 'align' => 'right', 'width' => null],
+                ['field_key' => 'aging_bucket', 'label' => 'Rango de mora', 'format' => 'text', 'align' => 'left', 'width' => null],
+                ['field_key' => 'client.uen', 'label' => 'UEN', 'format' => 'text', 'align' => 'left', 'width' => null],
+                ['field_key' => 'client.channel', 'label' => 'Canal', 'format' => 'text', 'align' => 'left', 'width' => null],
+            ];
         }
 
-        return [
-            ['field_key' => 'aging_bucket', 'label' => 'Bucket Mora', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'period_key', 'label' => 'Periodo', 'format' => 'text', 'align' => 'center', 'width' => null],
-            ['field_key' => 'document_number', 'label' => 'Documento', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'document_type', 'label' => 'Tipo', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'client.name', 'label' => 'Cliente', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'client.document_number', 'label' => 'NIT', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'client.region', 'label' => 'Regional', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'client.channel', 'label' => 'Canal', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'client.uen', 'label' => 'UEN', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'advisor.name', 'label' => 'Asesor', 'format' => 'text', 'align' => 'left', 'width' => null],
-            ['field_key' => 'due_date', 'label' => 'Fecha Vencimiento', 'format' => 'date', 'align' => 'center', 'width' => null],
-            ['field_key' => 'days_overdue', 'label' => 'Días Mora', 'format' => 'integer', 'align' => 'right', 'width' => null],
-            ['field_key' => 'original_amount', 'label' => 'Monto Original', 'format' => 'currency', 'align' => 'right', 'width' => null],
-            ['field_key' => 'pending_amount', 'label' => 'Saldo Pendiente', 'format' => 'currency', 'align' => 'right', 'width' => null],
+        if ($clientId) {
+            $columns = $this->ensureAdvisorColumn($columns);
+        }
+
+        return $columns;
+    }
+
+    /**
+     * @param  array<int, array{field_key: string, label: string, format: string, align: string, width: string|null}>  $columns
+     * @return array<int, array{field_key: string, label: string, format: string, align: string, width: string|null}>
+     */
+    private function ensureAdvisorColumn(array $columns): array
+    {
+        foreach ($columns as $column) {
+            if (($column['field_key'] ?? '') === 'advisor.name') {
+                return $columns;
+            }
+        }
+
+        $advisorCol = [
+            'field_key' => 'advisor.name',
+            'label'     => 'Asesor',
+            'format'    => 'text',
+            'align'     => 'left',
+            'width'     => '24',
         ];
+
+        $insertAt = 2;
+        foreach ($columns as $i => $column) {
+            if (($column['field_key'] ?? '') === 'document_type') {
+                $insertAt = $i + 1;
+                break;
+            }
+        }
+
+        array_splice($columns, $insertAt, 0, [$advisorCol]);
+
+        return $columns;
     }
 
     private function resolveTemplateFieldValue(PortfolioDocument $document, string $fieldKey, string $periodKey): mixed
@@ -478,6 +644,7 @@ class ExportService
             'period_date'  => $document->period_date?->format('Y-m-d'),
             'risk_level'   => $this->riskLabel((string) $document->risk_level),
             'status'       => $this->statusLabel((string) $document->status),
+            'advisor.name' => $document->advisor?->name ?: 'Sin asesor',
             default        => data_get($document, $fieldKey),
         };
     }
@@ -567,14 +734,11 @@ class ExportService
     private function agingBucket(int $days): string
     {
         return match (true) {
-            $days <= 0   => 'corriente',
-            $days <= 30  => '1-30',
-            $days <= 60  => '31-60',
-            $days <= 90  => '61-90',
-            $days <= 120 => '91-120',
-            $days <= 180 => '121-180',
-            $days <= 360 => '181-360',
-            default      => '+360',
+            $days <= 0  => 'Sin vencer',
+            $days <= 30 => '1-30',
+            $days <= 60 => '31-60',
+            $days <= 90 => '61-90',
+            default     => '>90',
         };
     }
 }

@@ -12,77 +12,36 @@ use Illuminate\Support\Facades\DB;
 
 class PeriodControlService
 {
-    public function nextPortfolioVersion(CarbonImmutable $periodDate): int
+    public function nextPortfolioVersion(?CarbonImmutable $periodDate = null): int
     {
-        return (int) PortfolioLoad::query()
-            ->where('period_key', $periodDate->format('Y-m'))
-            ->max('version') + 1;
+        return ((int) PortfolioLoad::query()->max('version')) + 1;
     }
 
-    public function nextCollectionVersion(CarbonImmutable $periodDate): int
+    public function nextCollectionVersion(?CarbonImmutable $periodDate = null): int
     {
-        return (int) CollectionLoad::query()
-            ->where('period_key', $periodDate->format('Y-m'))
-            ->max('version') + 1;
+        return ((int) CollectionLoad::query()->max('version')) + 1;
     }
 
     public function assertPortfolioChronology(CarbonImmutable $periodDate): void
     {
-        $latest = PortfolioLoad::query()
-            ->where('status', 'completed')
-            ->whereNotNull('period_date')
-            ->orderByDesc('period_date')
-            ->orderByDesc('version')
-            ->first();
-
-        if (! $latest) {
-            return;
-        }
-
-        $latestDate = CarbonImmutable::parse($latest->period_date)->startOfMonth();
-
-        if ($periodDate->startOfMonth()->lt($latestDate)) {
-            throw new DomainException(
-                "No se puede cargar cartera del periodo {$periodDate->format('Y-m')} porque existe una carga valida mas reciente ({$latestDate->format('Y-m')})."
-            );
-        }
+        // Sin control por periodo: la carga solo exige formato valido del archivo.
     }
 
     public function assertCollectionChronology(CarbonImmutable $periodDate): void
     {
-        $latest = CollectionLoad::query()
-            ->where('status', 'completed')
-            ->whereNotNull('period_date')
-            ->orderByDesc('period_date')
-            ->orderByDesc('version')
-            ->first();
-
-        if (! $latest) {
-            return;
-        }
-
-        $latestDate = CarbonImmutable::parse($latest->period_date)->startOfMonth();
-
-        if ($periodDate->startOfMonth()->lt($latestDate)) {
-            throw new DomainException(
-                "No se puede cargar recaudos del periodo {$periodDate->format('Y-m')} porque existe una version valida mas reciente ({$latestDate->format('Y-m')})."
-            );
-        }
+        // Sin control por periodo.
     }
 
     public function assertCollectionPortfolioPrerequisite(CarbonImmutable $periodDate): void
     {
-        $periodKey = $periodDate->format('Y-m');
-
         $hasPortfolio = PortfolioLoad::query()
-            ->where('period_key', $periodKey)
             ->where('status', 'completed')
             ->where('is_active', true)
             ->exists();
 
         if (! $hasPortfolio) {
             throw new DomainException(
-                "Antes de cargar recaudos del periodo {$periodKey} debe existir una carga de cartera activa para el mismo periodo."
+                'Antes de cargar recaudos debe existir una carga de cartera activa y completada.'
             );
         }
     }
@@ -90,6 +49,11 @@ class PeriodControlService
     public function activatePortfolioLoad(PortfolioLoad $load): void
     {
         $this->deactivateSamePeriodPortfolioLoads($load);
+
+        // Una sola carga de cartera activa: las anteriores quedan en historial pero fuera del dashboard.
+        PortfolioLoad::query()
+            ->where('id', '!=', $load->id)
+            ->update(['is_active' => false]);
 
         $load->forceFill([
             'is_active' => true,
@@ -101,6 +65,11 @@ class PeriodControlService
     public function activateCollectionLoad(CollectionLoad $load): void
     {
         $this->deactivateSamePeriodCollectionLoads($load);
+
+        // Una sola carga de recaudo activa (la recién activada); evita mezclar períodos en métricas.
+        CollectionLoad::query()
+            ->where('id', '!=', $load->id)
+            ->update(['is_active' => false]);
 
         $load->forceFill([
             'is_active' => true,
@@ -145,18 +114,12 @@ class PeriodControlService
     public function cancelCollectionLoad(CollectionLoad $load, User $user, string $reason): void
     {
         DB::transaction(function () use ($load, $user, $reason): void {
-            $this->assertNoLaterCollectionPeriods($load);
-
             $fallback = CollectionLoad::query()
-                ->where('period_key', $load->period_key)
                 ->where('status', 'completed')
                 ->where('id', '!=', $load->id)
                 ->orderByDesc('version')
+                ->orderByDesc('id')
                 ->first();
-
-            if ($load->is_active && ! $fallback) {
-                throw new DomainException('Solo se puede anular una carga activa cuando exista una version anterior del mismo periodo para reactivar.');
-            }
 
             $load->forceFill([
                 'status' => 'cancelled',
@@ -206,6 +169,10 @@ class PeriodControlService
 
     private function syncPeriodControlForCollection(CollectionLoad $load): void
     {
+        if (blank($load->period_key)) {
+            return;
+        }
+
         PeriodControl::query()->updateOrCreate(
             ['period_key' => $load->period_key],
             [

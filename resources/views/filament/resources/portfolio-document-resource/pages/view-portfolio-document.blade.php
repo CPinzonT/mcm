@@ -567,6 +567,12 @@
                     @error('mgContactDate') <div class="vd-error">{{ $message }}</div> @enderror
                 </div>
 
+                <div>
+                    <label class="vd-label">Hora <span style="color:var(--mcm-red)">*</span></label>
+                    <input type="time" wire:model="mgContactTime" class="vd-input">
+                    @error('mgContactTime') <div class="vd-error">{{ $message }}</div> @enderror
+                </div>
+
                 {{-- Follow-up date --}}
                 <div>
                     <label class="vd-label">Fecha de Seguimiento</label>

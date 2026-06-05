@@ -10,6 +10,7 @@ use App\Models\PortfolioDocument;
 use App\Models\PortfolioLoad;
 use App\Models\User;
 use App\Services\PortfolioRotationSnapshotService;
+use App\Services\Risk\RiskClassificationService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -21,6 +22,7 @@ class PortfolioLoadService
         private readonly PortfolioLoadValidationService $validationService,
         private readonly PeriodControlService $periodControlService,
         private readonly LoadAuditService $auditService,
+        private readonly RiskClassificationService $riskClassification,
     ) {}
 
     public function handleUpload(UploadedFile $uploadedFile, ?string $notes, User $user, ?string $forcedPeriodKey = null): LoadProcessingResultData
@@ -117,7 +119,7 @@ class PortfolioLoadService
                         'collected_amount' => max(0, $row['original_amount'] - $row['pending_amount']),
                         'days_overdue' => $row['days_overdue'],
                         'aging_buckets' => $row['aging_buckets'],
-                        'risk_level' => $this->riskLevelForDays($row['days_overdue']),
+                        'risk_level' => $this->riskClassification->riskLevelForDays($row['days_overdue']),
                         'status' => $row['pending_amount'] <= 0 ? 'paid' : 'active',
                         'currency' => Str::upper($row['currency'] ?? 'COP'),
                         'period_date' => $row['period_date'],
@@ -275,7 +277,7 @@ class PortfolioLoadService
 
         $isNew = ! $client->exists;
 
-        $client->fill([
+        $fill = [
             'name' => $row['client_name'] ?: $client->name,
             'phone' => $row['phone'] ?: $client->phone,
             'address' => $row['address'] ?: $client->address,
@@ -284,7 +286,20 @@ class PortfolioLoadService
             'uen' => $row['uen'] ?: $client->uen,
             'contact_name' => $row['contact'] ?: $client->contact_name,
             'active' => true,
-        ])->save();
+        ];
+
+        if (! empty($row['payment_term_days'])) {
+            $fill['payment_term_days'] = (int) $row['payment_term_days'];
+        } elseif (! empty($row['issue_date']) && ! empty($row['due_date'])) {
+            $issue = \Carbon\CarbonImmutable::parse($row['issue_date']);
+            $due = \Carbon\CarbonImmutable::parse($row['due_date']);
+            $termDays = max(0, (int) $issue->diffInDays($due));
+            if ($termDays > 0) {
+                $fill['payment_term_days'] = $termDays;
+            }
+        }
+
+        $client->fill($fill)->save();
 
         ClientHistory::query()->create([
             'client_id'   => $client->id,
@@ -318,17 +333,6 @@ class PortfolioLoadService
                 'active' => true,
             ],
         );
-    }
-
-    private function riskLevelForDays(int $days): string
-    {
-        return match (true) {
-            $days <= 30 => 'normal',
-            $days <= 60 => 'low',
-            $days <= 90 => 'medium',
-            $days <= 180 => 'high',
-            default => 'critical',
-        };
     }
 
     private function buildResult(PortfolioLoad $load): LoadProcessingResultData

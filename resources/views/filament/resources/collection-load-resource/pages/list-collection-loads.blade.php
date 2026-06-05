@@ -110,15 +110,6 @@
                     <div><strong>3. Consulta el historial.</strong><span>Los estados pendientes y procesados se controlan desde la tabla.</span></div>
                 </div>
             </div>
-
-            <details class="ops-guide">
-                <summary>Reglas de validacion</summary>
-                <div class="ops-guide-body">
-                    <div>Columnas minimas: documento y valor_pagado.</div>
-                    <div>Aliases soportados: fecha_pago, periodo, nro_recibo, cliente, vendedor y observacion.</div>
-                    <div>Si no existe encabezado, se usa el mapeo posicional 1-8 definido para recaudos.</div>
-                </div>
-            </details>
         </aside>
     </section>
 

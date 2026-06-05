@@ -35,7 +35,7 @@ class ListPortfolioLoads extends ListRecords
 
     public function table(Table $table): Table
     {
-        return $table
+        return PortfolioLoadResource::table($table)
             ->heading('Historial reciente')
             ->paginated([10, 25, 50]);
     }

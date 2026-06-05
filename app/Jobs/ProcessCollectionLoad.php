@@ -18,12 +18,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Client;
 use App\Models\CollectionDetail;
-use App\Models\PortfolioDocument;
 use Illuminate\Support\Str;
+use App\Services\Loads\Concerns\ResolvesCollectionPortfolioDocument;
 
 class ProcessCollectionLoad implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use ResolvesCollectionPortfolioDocument;
 
     public int $timeout = 1800;
 
@@ -33,6 +34,24 @@ class ProcessCollectionLoad implements ShouldQueue
         public readonly int $loadId,
         public readonly int $userId,
     ) {}
+
+    public function failed(\Throwable $exception): void
+    {
+        $load = CollectionLoad::query()->find($this->loadId);
+
+        if (! $load || in_array($load->status, ['completed', 'cancelled'], true)) {
+            return;
+        }
+
+        $load->forceFill([
+            'status'       => 'failed',
+            'processed_at' => now(),
+            'error_log'    => [[
+                'message'    => $exception->getMessage(),
+                'error_code' => 'queue_failed',
+            ]],
+        ])->save();
+    }
 
     public function handle(
         CollectionLoadValidationService $validationService,
@@ -46,24 +65,27 @@ class ProcessCollectionLoad implements ShouldQueue
         $user = User::findOrFail($this->userId);
         $absolutePath = Storage::disk('local')->path($load->path);
 
-        $validation = $validationService->validate($absolutePath);
+        $validation = $validationService->validate($absolutePath, $load->original_filename);
 
         $this->persistValidationState($load, $validation);
 
         if (! $validation->isValid) {
-            $load->forceFill(['status' => 'rejected', 'processed_at' => now()])->save();
+            $load->forceFill([
+                'status'       => 'rejected',
+                'processed_at' => now(),
+            ])->save();
             $auditService->record($load, 'collection', 'rejected', 'Carga rechazada por validación.', $user, $validation->toSummaryArray());
             return;
         }
 
         try {
             DB::transaction(function () use ($load, $validation, $periodControlService): void {
-                $version = $periodControlService->nextCollectionVersion($validation->periodDate);
+                $version = $periodControlService->nextCollectionVersion();
 
                 $load->forceFill([
                     'status'      => 'processing',
-                    'period_key'  => $validation->periodKey,
-                    'period_date' => $validation->periodDate?->toDateString(),
+                    'period_key'  => null,
+                    'period_date' => null,
                     'version'     => $version,
                 ])->save();
 
@@ -72,12 +94,7 @@ class ProcessCollectionLoad implements ShouldQueue
                 $totalCollected = 0.0;
 
                 foreach ($validation->normalizedRows as $row) {
-                    $portfolioDocument = PortfolioDocument::query()
-                        ->where('document_number', $row['document_number'])
-                        ->where('period_date', $validation->periodDate?->toDateString())
-                        ->whereHas('portfolioLoad', fn ($q) => $q->where('is_active', true)->where('status', 'completed'))
-                        ->latest('id')
-                        ->first();
+                    $portfolioDocument = $this->resolveCollectionPortfolioDocument($row);
 
                     $client       = $portfolioDocument?->client ?? $this->resolveClient($row, $clientCache);
                     $pendingAfter = $portfolioDocument
@@ -93,19 +110,20 @@ class ProcessCollectionLoad implements ShouldQueue
                         'document_number'       => $row['document_number'],
                         'document_type'         => $row['document_type'] ?? null,
                         'receipt_number'        => $row['receipt_number'],
+                        'reconciliation_id'     => $row['reconciliation_id'] ?? null,
                         'applied_document_type' => $portfolioDocument?->document_type ?? $row['document_type'] ?? null,
                         'amount'                => $row['amount'],
                         'applied_amount'        => $row['amount'],
                         'pending_amount_after'  => $pendingAfter,
                         'payment_date'          => $row['payment_date'],
                         'notes'                 => $row['notes'],
-                        'regional'              => $client->region,
-                        'channel'               => $client->channel,
-                        'uen'                   => $client->uen,
+                        'regional'              => $row['regional'] ?? $client->region,
+                        'channel'               => $row['channel'] ?? $client->channel,
+                        'uen'                   => $row['uen'] ?? $client->uen,
                         'seller_name'           => $row['seller_name'],
                         'source_payload'        => $row['source_payload'],
-                        'period_key'            => $validation->periodKey,
-                        'period_date'           => $validation->periodDate?->toDateString(),
+                        'period_key'            => null,
+                        'period_date'           => null,
                     ]);
 
                     $detailCount++;
@@ -114,8 +132,8 @@ class ProcessCollectionLoad implements ShouldQueue
 
                 $load->forceFill([
                     'status'         => 'completed',
-                    'period_key'     => $validation->periodKey,
-                    'period_date'    => $validation->periodDate?->toDateString(),
+                    'period_key'     => null,
+                    'period_date'    => null,
                     'version'        => $version,
                     'processed_rows' => count($validation->normalizedRows),
                     'detail_count'   => $detailCount,
@@ -168,7 +186,7 @@ class ProcessCollectionLoad implements ShouldQueue
         if ($validation->errors !== []) {
             $load->errors()->createMany(array_map(
                 static fn ($e) => $e->toArray(),
-                $validation->errors,
+                array_slice($validation->errors, 0, 500),
             ));
         }
     }

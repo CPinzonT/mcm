@@ -12,7 +12,8 @@ class ManagementLog extends Model
 
     protected $fillable = [
         'client_id', 'portfolio_document_id', 'advisor_id', 'user_id',
-        'type', 'subject', 'description', 'contact_date',
+        'type', 'subject', 'description', 'contact_date', 'contact_time',
+        'uen', 'channel',
         'result', 'follow_up_date', 'promised_amount', 'promised_date', 'status',
     ];
 
@@ -24,6 +25,16 @@ class ManagementLog extends Model
             'promised_date'   => 'date',
             'promised_amount' => 'decimal:2',
         ];
+    }
+
+    public function contactDateTimeLabel(): string
+    {
+        $date = $this->contact_date?->format('d/m/Y') ?? '—';
+        $time = $this->contact_time
+            ? substr((string) $this->contact_time, 0, 5)
+            : null;
+
+        return $time ? "{$date} {$time}" : $date;
     }
 
     public function client(): BelongsTo

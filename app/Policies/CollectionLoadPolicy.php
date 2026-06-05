@@ -29,6 +29,15 @@ class CollectionLoadPolicy
 
     public function delete(User $user, CollectionLoad $collectionLoad): bool
     {
-        return $user->hasRole('admin');
+        if ($user->hasRole('admin')) {
+            return true;
+        }
+
+        if (! $user->hasAnyRole(['analyst', 'analista'])) {
+            return false;
+        }
+
+        return in_array($collectionLoad->status, ['pending', 'rejected', 'failed', 'cancelled'], true)
+            || ! $collectionLoad->is_active;
     }
 }

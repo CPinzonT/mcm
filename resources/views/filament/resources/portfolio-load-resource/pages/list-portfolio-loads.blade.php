@@ -115,20 +115,11 @@
             <div class="ops-panel">
                 <div class="ops-section-title">Como preparar el archivo</div>
                 <div class="ops-step-list">
-                    <div><strong>1. Usa la plantilla.</strong><span>Evita cambios en nombres de columnas obligatorias.</span></div>
+                    <div><strong>1. Usa la plantilla.</strong><span>Columnas oficiales: Cuenta, Cliente, NIT, NroDocumento, TipoDocumento, Fechas, ValorDocumento, ImportePendiente, UEN (*_ValorARecaudar) y buckets de mora.</span></div>
                     <div><strong>2. Define el corte.</strong><span>Usa el periodo manual si el archivo mezcla fechas historicas.</span></div>
                     <div><strong>3. Procesa y revisa.</strong><span>Si hay errores, descarga el CSV y corrige solo esas filas.</span></div>
                 </div>
             </div>
-
-            <details class="ops-guide">
-                <summary>Reglas de validacion</summary>
-                <div class="ops-guide-body">
-                    <div>Columnas base: cuenta, cliente, nit, nro_documento, tipo, fecha_contabilizacion, fecha_vencimiento, valor_documento, saldo_pendiente y moneda.</div>
-                    <div>Se aceptan aliases razonables, pero las columnas obligatorias deben existir.</div>
-                    <div>Si el archivo parece de recaudos, la carga se rechaza con mensaje explicito.</div>
-                </div>
-            </details>
         </aside>
     </section>
 

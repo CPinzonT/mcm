@@ -5,9 +5,9 @@ namespace App\Filament\Resources\PortfolioDocumentResource\Pages;
 use App\Filament\Resources\PortfolioDocumentResource;
 use App\Models\ManagementLog;
 use App\Models\PortfolioDocument;
+use App\Services\Management\ManagementLogWriter;
 use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
-use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 
 class ViewPortfolioDocument extends ViewRecord
@@ -22,6 +22,7 @@ class ViewPortfolioDocument extends ViewRecord
     public string $mgDescription = '';
     public string $mgResult      = '';
     public string $mgContactDate = '';
+    public string $mgContactTime = '';
     public string $mgFollowUp    = '';
     public string $mgPromisedAmt = '';
     public string $mgPromisedDate = '';
@@ -35,6 +36,7 @@ class ViewPortfolioDocument extends ViewRecord
     {
         parent::mount($record);
         $this->mgContactDate = now()->format('Y-m-d');
+        $this->mgContactTime = now()->format('H:i');
     }
 
     public function saveManagement(): void
@@ -45,25 +47,22 @@ class ViewPortfolioDocument extends ViewRecord
             'mgDescription' => 'required|min:5',
             'mgResult'      => 'nullable|in:no_contact,promise_to_pay,partial_payment,refused,arrangement,other',
             'mgContactDate' => 'required|date',
+            'mgContactTime' => 'required|date_format:H:i',
             'mgFollowUp'    => 'nullable|date',
             'mgPromisedAmt' => 'nullable|numeric|min:0',
             'mgPromisedDate'=> 'nullable|date',
         ]);
 
-        ManagementLog::create([
-            'client_id'             => $this->record->client_id,
-            'portfolio_document_id' => $this->record->id,
-            'advisor_id'            => $this->record->advisor_id,
-            'user_id'               => Auth::id(),
-            'type'                  => $this->mgType,
-            'subject'               => $this->mgSubject,
-            'description'           => $this->mgDescription,
-            'result'                => $this->mgResult ?: null,
-            'contact_date'          => $this->mgContactDate,
-            'follow_up_date'        => $this->mgFollowUp ?: null,
-            'promised_amount'       => $this->mgPromisedAmt !== '' ? (float) $this->mgPromisedAmt : null,
-            'promised_date'         => $this->mgPromisedDate ?: null,
-            'status'                => 'open',
+        ManagementLogWriter::createForDocument($this->record, [
+            'type'            => $this->mgType,
+            'subject'         => $this->mgSubject,
+            'description'     => $this->mgDescription,
+            'result'          => $this->mgResult ?: null,
+            'contact_date'    => $this->mgContactDate,
+            'contact_time'    => $this->mgContactTime,
+            'follow_up_date'  => $this->mgFollowUp ?: null,
+            'promised_amount' => $this->mgPromisedAmt !== '' ? (float) $this->mgPromisedAmt : null,
+            'promised_date'   => $this->mgPromisedDate ?: null,
         ]);
 
         $this->mgSubject      = '';
@@ -73,6 +72,7 @@ class ViewPortfolioDocument extends ViewRecord
         $this->mgPromisedAmt  = '';
         $this->mgPromisedDate = '';
         $this->mgContactDate  = now()->format('Y-m-d');
+        $this->mgContactTime  = now()->format('H:i');
 
         unset($this->managementLogs);
 
@@ -97,7 +97,9 @@ class ViewPortfolioDocument extends ViewRecord
             ->get()
             ->map(fn (ManagementLog $log) => [
                 'id'            => $log->id,
-                'date'          => $log->contact_date?->format('d/m/Y'),
+                'date'          => $log->contactDateTimeLabel(),
+                'uen'           => $log->uen,
+                'channel'       => $log->channel,
                 'type'          => $log->type,
                 'type_label'    => $log->getTypeLabel(),
                 'subject'       => $log->subject,

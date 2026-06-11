@@ -9,6 +9,7 @@ use App\Policies\CastigoCasePolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\PortfolioDocumentPolicy;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -20,5 +21,9 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Client::class, ClientPolicy::class);
         Gate::policy(PortfolioDocument::class, PortfolioDocumentPolicy::class);
         Gate::policy(CastigoCase::class, CastigoCasePolicy::class);
+
+        if ($rootUrl = config('app.url')) {
+            URL::forceRootUrl($rootUrl);
+        }
     }
 }

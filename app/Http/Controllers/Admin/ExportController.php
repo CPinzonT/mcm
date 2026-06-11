@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\ExportService;
+use App\Services\Reports\CommitmentActaQuery;
 use Illuminate\Http\Request;
 
 class ExportController extends Controller
@@ -47,11 +48,23 @@ class ExportController extends Controller
 
     public function commitmentActa(Request $request)
     {
-        $sessionDate = $request->query('session_date');
-        abort_if(! $sessionDate, 422, 'La fecha de sesión es requerida.');
+        $range = CommitmentActaQuery::resolveDateRange(
+            $request->query('date_from'),
+            $request->query('date_to'),
+            $request->query('period_from'),
+            $request->query('period_to'),
+        );
+
+        if ($range === null && $request->filled('session_date')) {
+            $sessionDate = (string) $request->query('session_date');
+            $range = [$sessionDate, $sessionDate];
+        }
+
+        abort_if($range === null, 422, 'Indica un rango de fechas (desde/hasta por día o por mes).');
 
         return $this->export->exportCommitmentActa(
-            $sessionDate,
+            $range[0],
+            $range[1],
             $request->query('uen'),
             $request->query('channel'),
             $request->query('time_from'),

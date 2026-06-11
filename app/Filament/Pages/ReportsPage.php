@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Models\Client;
 use App\Models\ManagementLog;
 use App\Models\PortfolioDocument;
+use App\Services\Reports\CommitmentActaQuery;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,8 @@ class ReportsPage extends Page
     public string $periodTo   = '';
     public string $uen        = '';
     public string $channel    = '';
-    public string $sessionDate = '';
+    public string $dateFrom   = '';
+    public string $dateTo     = '';
     public string $timeFrom   = '';
     public string $timeTo     = '';
 
@@ -58,17 +60,45 @@ class ReportsPage extends Page
 
     public function exportActaUrl(): ?string
     {
-        if ($this->reportType !== 'acta_compromisos' || ! $this->sessionDate) {
+        if ($this->reportType !== 'acta_compromisos') {
+            return null;
+        }
+
+        $range = $this->resolveActaDateRange();
+        if ($range === null) {
             return null;
         }
 
         return route('admin.exports.commitment-acta', array_filter([
-            'uen'          => $this->uen ?: null,
-            'channel'      => $this->channel ?: null,
-            'session_date' => $this->sessionDate,
-            'time_from'    => $this->timeFrom ?: null,
-            'time_to'      => $this->timeTo ?: null,
+            'uen'       => $this->uen ?: null,
+            'channel'   => $this->channel ?: null,
+            'date_from' => $range[0],
+            'date_to'   => $range[1],
+            'time_from' => $this->timeFrom ?: null,
+            'time_to'   => $this->timeTo ?: null,
         ]));
+    }
+
+    public function actaDateRangeLabel(): ?string
+    {
+        $range = $this->resolveActaDateRange();
+
+        return $range === null
+            ? null
+            : \Carbon\Carbon::parse($range[0])->format('d/m/Y') . ' – ' . \Carbon\Carbon::parse($range[1])->format('d/m/Y');
+    }
+
+    /**
+     * @return array{0: string, 1: string}|null
+     */
+    private function resolveActaDateRange(): ?array
+    {
+        return CommitmentActaQuery::resolveDateRange(
+            $this->dateFrom,
+            $this->dateTo,
+            $this->periodFrom,
+            $this->periodTo,
+        );
     }
 
     public function generateReport(): void
@@ -78,10 +108,10 @@ class ReportsPage extends Page
             return;
         }
 
-        if ($this->reportType === 'acta_compromisos' && ! $this->sessionDate) {
+        if ($this->reportType === 'acta_compromisos' && $this->resolveActaDateRange() === null) {
             Notification::make()
-                ->title('Indica la fecha de la sesión')
-                ->body('La acta de compromisos filtra por fecha y rango horario de gestión.')
+                ->title('Indica el rango de fechas')
+                ->body('Usa Fecha desde/hasta (días) o Mes desde/hasta para filtrar el acta de compromisos.')
                 ->warning()
                 ->send();
             return;
@@ -375,42 +405,19 @@ class ReportsPage extends Page
 
     private function actaCompromisosQuery(): \Illuminate\Database\Query\Builder
     {
-        $q = DB::table('management_logs as ml')
-            ->join('clients as c', 'c.id', '=', 'ml.client_id')
-            ->leftJoin('advisors as a', 'a.id', '=', 'ml.advisor_id')
-            ->leftJoin('portfolio_documents as pd', 'pd.id', '=', 'ml.portfolio_document_id')
-            ->whereNull('ml.deleted_at');
-
-        if ($this->uen) {
-            $q->where(function ($inner) {
-                $inner->where('ml.uen', $this->uen)
-                    ->orWhere('c.uen', $this->uen);
-            });
+        $range = $this->resolveActaDateRange();
+        if ($range === null) {
+            return DB::table('management_logs as ml')->whereRaw('1 = 0');
         }
 
-        if ($this->channel) {
-            $q->where(function ($inner) {
-                $inner->where('ml.channel', $this->channel)
-                    ->orWhere('c.channel', $this->channel);
-            });
-        }
-
-        $sessionDate = $this->sessionDate ?: ($this->periodFrom ? $this->periodFrom . '-01' : null);
-        if ($sessionDate) {
-            $q->whereDate('ml.contact_date', $sessionDate);
-        } elseif ($this->periodFrom) {
-            $q->where('ml.contact_date', '>=', $this->periodFrom . '-01');
-        }
-        if ($this->periodTo && ! $this->sessionDate) {
-            $q->where('ml.contact_date', '<=', $this->periodTo . '-28');
-        }
-
-        if ($this->timeFrom) {
-            $q->where('ml.contact_time', '>=', $this->normalizeTimeFilter($this->timeFrom));
-        }
-        if ($this->timeTo) {
-            $q->where('ml.contact_time', '<=', $this->normalizeTimeFilter($this->timeTo, true));
-        }
+        $q = CommitmentActaQuery::previewQuery(
+            $range[0],
+            $range[1],
+            $this->uen ?: null,
+            $this->channel ?: null,
+            $this->timeFrom ?: null,
+            $this->timeTo ?: null,
+        );
 
         return $q->select([
             DB::raw('COALESCE(a.name, "Sin asignar") as advisor'),
@@ -430,15 +437,6 @@ class ReportsPage extends Page
             'ml.contact_date',
             'ml.contact_time',
         ]);
-    }
-
-    private function normalizeTimeFilter(string $time, bool $end = false): string
-    {
-        if (strlen($time) === 5) {
-            return $end ? $time . ':59' : $time . ':00';
-        }
-
-        return $time;
     }
 
     private function reportAnalisisVencimiento(): array

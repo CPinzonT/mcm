@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\CollectionDetail;
 use App\Models\CollectionReconciliation;
 use App\Models\ManagementLog;
+use App\Services\Reports\CommitmentActaQuery;
 use App\Models\PortfolioDocument;
 use App\Models\ReportTemplate;
 use Illuminate\Support\Facades\DB;
@@ -131,7 +132,8 @@ class ExportService
     }
 
     public function exportCommitmentActa(
-        string $sessionDate,
+        string $dateFrom,
+        string $dateTo,
         ?string $uen = null,
         ?string $channel = null,
         ?string $timeFrom = null,
@@ -142,32 +144,20 @@ class ExportService
             'Fecha gestión', 'Hora', 'UEN', 'Canal', 'Observación',
         ];
 
-        $filename = 'acta_compromisos_' . str_replace('-', '', $sessionDate) . '_' . now()->format('His') . '.xlsx';
+        $fromTag = str_replace('-', '', $dateFrom);
+        $toTag = str_replace('-', '', $dateTo);
+        $filename = 'acta_compromisos_' . $fromTag . '_' . $toTag . '_' . now()->format('His') . '.xlsx';
 
         $query = ManagementLog::query()
             ->with(['advisor:id,name', 'client:id,name,uen,channel', 'portfolioDocument:id,document_number'])
-            ->whereDate('contact_date', $sessionDate)
+            ->whereNull('deleted_at');
+
+        CommitmentActaQuery::applyContactDateRange($query, $dateFrom, $dateTo);
+        CommitmentActaQuery::applyDimensionFilters($query, $uen, $channel, $timeFrom, $timeTo);
+
+        $query->orderBy('contact_date')
             ->orderBy('contact_time')
             ->orderBy('id');
-
-        if ($uen) {
-            $query->where(function ($q) use ($uen) {
-                $q->where('uen', $uen)->orWhereHas('client', fn ($c) => $c->where('uen', $uen));
-            });
-        }
-
-        if ($channel) {
-            $query->where(function ($q) use ($channel) {
-                $q->where('channel', $channel)->orWhereHas('client', fn ($c) => $c->where('channel', $channel));
-            });
-        }
-
-        if ($timeFrom) {
-            $query->where('contact_time', '>=', $this->normalizeExportTime($timeFrom));
-        }
-        if ($timeTo) {
-            $query->where('contact_time', '<=', $this->normalizeExportTime($timeTo, true));
-        }
 
         $mapper = function (ManagementLog $log) {
             $commitment = $log->promised_date?->format('Y-m-d')

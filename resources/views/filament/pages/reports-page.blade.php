@@ -131,22 +131,34 @@ $hasGenerated = $currentLabel && isset($this->rows);
     <section class="filter-bar mcm-reveal">
         <div class="rp-filter-grid">
             <div><p class="filter-label">Tipo de reporte</p><select wire:model="reportType" class="filter-input"><option value="">— Seleccionar —</option>@foreach($reportLabels as $val => $lbl)<option value="{{ $val }}">{{ $lbl }}</option>@endforeach</select></div>
+            @if($isActa)
+            <div><p class="filter-label">Fecha desde</p><input type="date" wire:model="dateFrom" class="filter-input" title="Rango por días"/></div>
+            <div><p class="filter-label">Fecha hasta</p><input type="date" wire:model="dateTo" class="filter-input" title="Rango por días"/></div>
+            <div><p class="filter-label">Mes desde</p><input type="month" wire:model="periodFrom" class="filter-input" title="Alternativa: rango por meses"/></div>
+            <div><p class="filter-label">Mes hasta</p><input type="month" wire:model="periodTo" class="filter-input" title="Alternativa: rango por meses"/></div>
+            @else
             <div><p class="filter-label">Período desde</p><input type="month" wire:model="periodFrom" class="filter-input"/></div>
             <div><p class="filter-label">Período hasta</p><input type="month" wire:model="periodTo" class="filter-input"/></div>
+            @endif
             <div><p class="filter-label">UEN</p><select wire:model="uen" class="filter-input"><option value="">Todas</option>@foreach($this->uenOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
             @if($isActa)
             <div><p class="filter-label">Canal</p><select wire:model="channel" class="filter-input"><option value="">Todos</option>@foreach($this->channelOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
-            <div><p class="filter-label">Fecha sesión</p><input type="date" wire:model="sessionDate" class="filter-input"/></div>
-            <div><p class="filter-label">Hora desde</p><input type="time" wire:model="timeFrom" class="filter-input"/></div>
-            <div><p class="filter-label">Hora hasta</p><input type="time" wire:model="timeTo" class="filter-input"/></div>
+            <div><p class="filter-label">Hora desde (opc.)</p><input type="time" wire:model="timeFrom" class="filter-input"/></div>
+            <div><p class="filter-label">Hora hasta (opc.)</p><input type="time" wire:model="timeTo" class="filter-input"/></div>
             @endif
             <button wire:click="generateReport" class="btn-primary" style="align-self:flex-end"><x-heroicon-o-play style="width:1rem;height:1rem"/>Generar</button>
             @if($isActa && $exportUrl)
-            <a href="{{ $exportUrl }}" target="_blank" class="btn-ghost" style="align-self:flex-end"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar acta</a>
+            <a href="{{ $exportUrl }}" target="_blank" class="btn-ghost" style="align-self:flex-end" title="Descarga Excel del acta de compromisos"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar acta</a>
             @elseif(!$isActa && $hasData)
             <a href="{{ route('admin.exports.portfolio', ['period' => $this->periodFrom]) }}" target="_blank" class="btn-ghost" style="align-self:flex-end"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar</a>
             @endif
         </div>
+        @if($isActa && $this->actaDateRangeLabel())
+        <p style="margin-top:.65rem;font-size:.78rem;color:var(--mcm-muted);">
+            Rango del acta: <strong style="color:var(--mcm-text-strong);">{{ $this->actaDateRangeLabel() }}</strong>
+            · El Excel exportado usa las mismas gestiones filtradas por fecha de contacto.
+        </p>
+        @endif
     </section>
 
     @if($hasGenerated && $hasData)

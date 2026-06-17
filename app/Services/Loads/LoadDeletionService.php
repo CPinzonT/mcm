@@ -8,6 +8,7 @@ use App\Models\CollectionLoad;
 use App\Models\PeriodControl;
 use App\Models\PortfolioDocument;
 use App\Models\PortfolioLoad;
+use App\Models\SalesLoad;
 use App\Models\User;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -104,6 +105,33 @@ class LoadDeletionService
                 ],
             );
 
+            $load->delete();
+        });
+
+        $this->deleteStoredFile($disk, $path);
+    }
+
+    public function deleteSalesLoad(SalesLoad $load, User $user): void
+    {
+        $disk = $load->disk;
+        $path = $load->path;
+
+        DB::transaction(function () use ($load, $user): void {
+            $this->auditService->record(
+                $load,
+                'sales',
+                'deleted',
+                'Carga de ventas eliminada permanentemente.',
+                $user,
+                [
+                    'reference' => $load->reference,
+                    'status' => $load->status,
+                    'period_key' => $load->period_key,
+                    'rows' => $load->rows()->count(),
+                ],
+            );
+
+            $load->rows()->delete();
             $load->delete();
         });
 

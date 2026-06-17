@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\CollectionLoad;
 use App\Models\PortfolioLoad;
+use App\Models\SalesLoad;
 use App\Services\Loads\Support\PortfolioLoadTemplate;
 use Illuminate\Support\Facades\Storage;
 
@@ -131,6 +132,61 @@ class LoadDownloadController extends Controller
         return Storage::disk($collectionLoad->disk)->download(
             $collectionLoad->path,
             $collectionLoad->original_filename ?: basename($collectionLoad->path),
+        );
+    }
+
+    public function salesTemplate()
+    {
+        $headers = [
+            'fecha_venta',
+            'documento',
+            'cliente',
+            'nit',
+            'producto_codigo',
+            'producto',
+            'cantidad',
+            'valor_venta',
+            'vendedor',
+            'uen',
+            'regional',
+            'canal',
+        ];
+
+        return response()->streamDownload(function () use ($headers): void {
+            $stream = fopen('php://output', 'wb');
+            fputcsv($stream, $headers);
+            fclose($stream);
+        }, 'plantilla-carga-ventas.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    public function salesErrors(SalesLoad $salesLoad)
+    {
+        $this->authorize('view', $salesLoad);
+
+        return response()->streamDownload(function () use ($salesLoad): void {
+            $stream = fopen('php://output', 'wb');
+            fputcsv($stream, ['fila', 'campo', 'codigo', 'mensaje']);
+
+            foreach ($salesLoad->error_log ?? [] as $error) {
+                fputcsv($stream, [
+                    $error['row_number'] ?? '',
+                    $error['field'] ?? '',
+                    $error['error_code'] ?? '',
+                    $error['message'] ?? '',
+                ]);
+            }
+
+            fclose($stream);
+        }, "errores-ventas-{$salesLoad->reference}.csv", ['Content-Type' => 'text/csv']);
+    }
+
+    public function salesSource(SalesLoad $salesLoad)
+    {
+        $this->authorize('view', $salesLoad);
+
+        return Storage::disk($salesLoad->disk)->download(
+            $salesLoad->path,
+            $salesLoad->original_filename ?: basename($salesLoad->path),
         );
     }
 }

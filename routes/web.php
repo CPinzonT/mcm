@@ -17,8 +17,11 @@ Route::middleware('auth')->prefix('admin')->name('admin.loads.')->group(function
     Route::get('/portfolio-loads/template', [LoadDownloadController::class, 'portfolioTemplate'])->name('portfolio.template');
     Route::get('/collection-loads/template', [LoadDownloadController::class, 'collectionTemplate'])->name('collection.template');
     Route::get('/budget-loads/template', [LoadDownloadController::class, 'budgetTemplate'])->name('budget.template');
+    Route::get('/sales-loads/template', [LoadDownloadController::class, 'salesTemplate'])->name('sales.template');
     Route::get('/portfolio-loads/{portfolioLoad}/errors', [LoadDownloadController::class, 'portfolioErrors'])->name('portfolio.errors');
     Route::get('/collection-loads/{collectionLoad}/errors', [LoadDownloadController::class, 'collectionErrors'])->name('collection.errors');
+    Route::get('/sales-loads/{salesLoad}/errors', [LoadDownloadController::class, 'salesErrors'])->name('sales.errors');
     Route::get('/portfolio-loads/{portfolioLoad}/source', [LoadDownloadController::class, 'portfolioSource'])->name('portfolio.source');
     Route::get('/collection-loads/{collectionLoad}/source', [LoadDownloadController::class, 'collectionSource'])->name('collection.source');
+    Route::get('/sales-loads/{salesLoad}/source', [LoadDownloadController::class, 'salesSource'])->name('sales.source');
 });

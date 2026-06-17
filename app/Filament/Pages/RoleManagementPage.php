@@ -73,6 +73,9 @@ class RoleManagementPage extends Page
             'Recaudos' => [
                 'upload collection loads', 'view collections',
             ],
+            'Ventas' => [
+                'upload sales loads', 'view sales',
+            ],
             'Cargas' => [
                 'upload portfolio loads',
             ],
@@ -110,6 +113,8 @@ class RoleManagementPage extends Page
             'view clients'             => 'Ver clientes',
             'upload collection loads'  => 'Cargar recaudos',
             'view collections'         => 'Ver recaudos',
+            'upload sales loads'       => 'Cargar ventas',
+            'view sales'               => 'Ver ventas',
             'upload portfolio loads'   => 'Cargar cartera',
             'create management logs'   => 'Registrar gestiones',
             'edit management logs'     => 'Editar gestiones',

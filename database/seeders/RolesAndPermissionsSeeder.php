@@ -20,6 +20,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'upload portfolio loads',
             // Recaudos
             'view collections', 'upload collection loads',
+            // Ventas
+            'view sales', 'upload sales loads',
             // Gestión
             'view management logs', 'create management logs', 'edit management logs',
             // Reportes
@@ -46,6 +48,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'view clients', 'create clients', 'edit clients',
                 'view portfolio', 'create portfolio', 'edit portfolio', 'upload portfolio loads',
                 'view collections', 'upload collection loads',
+                'view sales', 'upload sales loads',
                 'view management logs', 'create management logs', 'edit management logs',
                 'view reports', 'generate reports', 'manage report templates', 'export reports',
                 'view castigo cases', 'create castigo cases', 'edit castigo cases', 'approve castigo cases',
@@ -57,6 +60,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'view clients', 'create clients', 'edit clients',
                 'view portfolio', 'create portfolio', 'edit portfolio', 'upload portfolio loads',
                 'view collections', 'upload collection loads',
+                'view sales', 'upload sales loads',
                 'view management logs', 'create management logs', 'edit management logs',
                 'view reports', 'generate reports', 'export reports',
                 'view castigo cases', 'create castigo cases', 'edit castigo cases',
@@ -67,6 +71,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'view clients', 'create clients', 'edit clients',
                 'view portfolio', 'create portfolio', 'edit portfolio', 'upload portfolio loads',
                 'view collections', 'upload collection loads',
+                'view sales', 'upload sales loads',
                 'view management logs', 'create management logs', 'edit management logs',
                 'view reports', 'generate reports', 'export reports',
                 'view castigo cases', 'create castigo cases', 'edit castigo cases',

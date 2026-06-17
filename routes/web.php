@@ -18,6 +18,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.loads.')->group(function
     Route::get('/collection-loads/template', [LoadDownloadController::class, 'collectionTemplate'])->name('collection.template');
     Route::get('/budget-loads/template', [LoadDownloadController::class, 'budgetTemplate'])->name('budget.template');
     Route::get('/sales-loads/template', [LoadDownloadController::class, 'salesTemplate'])->name('sales.template');
+    Route::get('/client-contacts/template', [LoadDownloadController::class, 'clientContactsTemplate'])->name('clients.contacts.template');
     Route::get('/portfolio-loads/{portfolioLoad}/errors', [LoadDownloadController::class, 'portfolioErrors'])->name('portfolio.errors');
     Route::get('/collection-loads/{collectionLoad}/errors', [LoadDownloadController::class, 'collectionErrors'])->name('collection.errors');
     Route::get('/sales-loads/{salesLoad}/errors', [LoadDownloadController::class, 'salesErrors'])->name('sales.errors');

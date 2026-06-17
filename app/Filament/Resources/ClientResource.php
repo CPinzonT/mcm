@@ -163,6 +163,7 @@ class ClientResource extends Resource
     {
         return [
             'index'  => Pages\ListClients::route('/'),
+            'import-contacts' => Pages\ImportClientContacts::route('/actualizacion-data'),
             'create' => Pages\CreateClient::route('/create'),
             'edit'   => Pages\EditClient::route('/{record}/edit'),
             'view'   => Pages\ViewClient::route('/{record}'),

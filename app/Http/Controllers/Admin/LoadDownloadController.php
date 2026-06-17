@@ -189,4 +189,29 @@ class LoadDownloadController extends Controller
             $salesLoad->original_filename ?: basename($salesLoad->path),
         );
     }
+
+    public function clientContactsTemplate()
+    {
+        $headers = [
+            'nit',
+            'codigo',
+            'nombre',
+            'email',
+            'telefono',
+            'direccion',
+            'ciudad',
+            'regional',
+            'canal',
+            'uen',
+            'contacto',
+            'email_contacto',
+            'telefono_contacto',
+        ];
+
+        return response()->streamDownload(function () use ($headers): void {
+            $stream = fopen('php://output', 'wb');
+            fputcsv($stream, $headers);
+            fclose($stream);
+        }, 'plantilla-maestro-contactos-clientes.csv', ['Content-Type' => 'text/csv']);
+    }
 }

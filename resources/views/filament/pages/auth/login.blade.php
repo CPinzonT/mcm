@@ -8,28 +8,17 @@
     @include('filament.partials.mcm-login-styles')
 
     <div class="mcm-auth">
-        <aside class="mcm-auth-brand" aria-hidden="true">
-            <div class="mcm-auth-brand-inner">
-                <div class="mcm-auth-mark">@include('filament.partials.mcm-brand-logo')</div>
-                <h1 class="mcm-auth-title">Gestión de Cartera</h1>
-                <p class="mcm-auth-lead">
-                    Control operativo de cartera, recaudos y analítica comercial en un solo lugar.
-                </p>
-                <ul class="mcm-auth-features">
-                    <li>Cargas y conciliación</li>
-                    <li>Dashboard estratégico</li>
-                    <li>Reportes y seguimiento</li>
-                </ul>
-            </div>
-        </aside>
-
         <section class="mcm-auth-panel">
+            <div class="mcm-auth-card-top">
+                @include('filament.partials.mcm-brand-logo')
+            </div>
+
             <div class="fi-simple-page mcm-auth-card">
                 <div class="fi-simple-page-content">
                     @if (filled($heading) || $hasLogo || filled($subheading))
                         <x-filament-panels::header.simple
                             :heading="$heading"
-                            :logo="$hasLogo"
+                            :logo="false"
                             :subheading="$subheading"
                         />
                     @endif

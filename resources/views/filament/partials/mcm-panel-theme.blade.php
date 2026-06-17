@@ -49,6 +49,16 @@
         background-image: linear-gradient(165deg, #2852a0 0%, #3268b5 48%, #2852a0 100%) !important;
     }
 
+    /* Login: no aplicar fondo azul del panel */
+    body.fi-body:has(.mcm-auth-root),
+    body.fi-body:has(.mcm-auth-root) .fi-simple-layout,
+    body.fi-body:has(.mcm-auth-root) .fi-simple-main-ctn,
+    body.fi-body:has(.mcm-auth-root) .fi-simple-main,
+    body.fi-body:has(.mcm-auth-root) .fi-simple-page {
+        background-color: #eef2f8 !important;
+        background-image: none !important;
+    }
+
     /* Anula fondos grises de Tailwind/Filament en el área principal */
     .fi-main-ctn.bg-gray-50,
     .fi-main.bg-gray-50,

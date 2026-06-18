@@ -84,6 +84,18 @@ class ImportNormalizer
 
     public function normalizeDocumentNumber(mixed $value): ?string
     {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_numeric($value)) {
+            $numeric = (float) $value;
+
+            if (floor($numeric) === $numeric) {
+                $value = sprintf('%.0f', $numeric);
+            }
+        }
+
         $text = $this->normalizeText($value, 100);
 
         return $text !== null ? Str::upper($text) : null;

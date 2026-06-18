@@ -88,15 +88,12 @@ class ClientContactImportService
                         'row_number' => $row['row_number'],
                         'field' => 'nit',
                         'error_code' => 'not_found',
-                        'message' => 'Cliente no encontrado con el NIT indicado.',
+                        'message' => 'Cliente no encontrado por NIT ni por nombre.',
                     ];
                     continue;
                 }
 
-                $updates = collect($row)
-                    ->except(['row_number', 'document_number', 'code'])
-                    ->filter(fn ($value) => $value !== null && $value !== '')
-                    ->all();
+                $updates = $this->buildUpdates($client, $row);
 
                 if ($updates === []) {
                     continue;
@@ -149,9 +146,41 @@ class ClientContactImportService
         }
 
         if (! empty($row['code'])) {
-            return $this->nitMatcher->find($row['code']);
+            $client = $this->nitMatcher->find($row['code']);
+
+            if ($client !== null) {
+                return $client;
+            }
+        }
+
+        if (! empty($row['name'])) {
+            return $this->nitMatcher->findByName($row['name']);
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function buildUpdates(Client $client, array $row): array
+    {
+        $updates = collect($row)
+            ->except(['row_number', 'document_number', 'code'])
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->all();
+
+        $masterNit = $row['document_number'] ?? null;
+
+        if (is_string($masterNit) && $this->nitMatcher->canAssignDocumentNumber($client, $masterNit)) {
+            $updates['document_number'] = $masterNit;
+
+            if ($this->nitMatcher->isPlaceholderIdentifier($client->code)) {
+                $updates['code'] = $masterNit;
+            }
+        }
+
+        return $updates;
     }
 }

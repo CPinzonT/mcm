@@ -98,7 +98,7 @@
                 <div class="ops-step-list">
                     <div><strong>NIT.</strong><span>Identificador obligatorio (con o sin dígito de verificación, ej. 901276722-2).</span></div>
                     <div><strong>Datos del maestro.</strong><span>Nombre SN, fecha de creación, canal, territorio, límite de crédito, teléfono móvil, correo, ciudad y dirección.</span></div>
-                    <div><strong>Coincidencia.</strong><span>Se busca el cliente por NIT en documento o código interno, probando también la variante sin dígito de verificación.</span></div>
+                    <div><strong>Coincidencia.</strong><span>Primero por NIT; si no existe, por nombre (razón social). Si el cliente tiene NIT temporal REC-/IMP-, se reemplaza por el NIT del maestro.</span></div>
                 </div>
             </div>
 

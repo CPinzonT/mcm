@@ -22,6 +22,10 @@ class ClientContactImportValidationService
         'contact_name' => ['contacto', 'contact_name', 'nombre_contacto', 'contacto_responsable'],
         'contact_email' => ['email_contacto', 'correo_contacto', 'contact_email'],
         'contact_phone' => ['telefono_contacto', 'teléfono_contacto', 'contact_phone', 'celular_contacto'],
+        'fecha_creacion' => [
+            'fecha_creacion', 'fecha_de_creacion', 'fechacreacion', 'fecha_creacion_cliente',
+            'fecha_alta', 'fecha_registro', 'fecha_creacion_sap', 'created_date',
+        ],
     ];
 
     private const MAX_STORED_ERRORS = 200;
@@ -99,8 +103,9 @@ class ClientContactImportValidationService
             }
 
             $contactFields = $this->extractContactFields($payload);
+            $masterCreatedAt = $this->parseMasterCreatedAt($payload);
 
-            if ($contactFields === []) {
+            if ($contactFields === [] && $masterCreatedAt === null) {
                 $skippedRows++;
                 continue;
             }
@@ -109,7 +114,7 @@ class ClientContactImportValidationService
                 'row_number' => $rowNumber,
                 'document_number' => $documentNumber,
                 'code' => $code,
-            ], $contactFields);
+            ], $contactFields, $masterCreatedAt !== null ? ['master_created_at' => $masterCreatedAt->toDateString()] : []);
         }
 
         if ($headerMap === null && $errors === []) {
@@ -230,5 +235,13 @@ class ClientContactImportValidationService
         }
 
         return $fields;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function parseMasterCreatedAt(array $payload): ?\Carbon\CarbonImmutable
+    {
+        return $this->normalizer->parseDate($payload['fecha_creacion'] ?? null);
     }
 }

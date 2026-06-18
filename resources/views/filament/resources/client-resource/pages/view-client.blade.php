@@ -646,6 +646,16 @@
                         <div class="cv-datum-value mono">{{ $c->document_number ?? '—' }}</div>
                     </div>
                     <div class="cv-datum">
+                        <div class="cv-datum-label">Fecha de creación</div>
+                        <div class="cv-datum-value">
+                            @if($c->master_created_at)
+                                {{ $c->master_created_at->format('d/m/Y') }}
+                            @else
+                                —
+                            @endif
+                        </div>
+                    </div>
+                    <div class="cv-datum">
                         <div class="cv-datum-label">Correo</div>
                         <div class="cv-datum-value">{{ $c->email ?? '—' }}</div>
                     </div>

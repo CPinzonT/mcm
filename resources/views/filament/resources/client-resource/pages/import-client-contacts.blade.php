@@ -98,6 +98,7 @@
                 <div class="ops-step-list">
                     <div><strong>Identificación.</strong><span>NIT o código (obligatorio al menos uno).</span></div>
                     <div><strong>Contacto empresa.</strong><span>Correo, teléfono, dirección, ciudad, regional, canal, UEN.</span></div>
+                    <div><strong>Fecha de creación.</strong><span>Columna fecha_creacion del maestro SAP (se muestra en la ficha del cliente).</span></div>
                     <div><strong>Contacto responsable.</strong><span>Nombre, correo y teléfono del contacto.</span></div>
                 </div>
             </div>

@@ -15,6 +15,7 @@ class Client extends Model
         'email', 'phone', 'address', 'city', 'region',
         'channel', 'uen', 'credit_limit', 'payment_term_days',
         'contact_name', 'contact_email', 'contact_phone', 'active', 'notes',
+        'master_created_at',
     ];
 
     protected function casts(): array
@@ -23,6 +24,7 @@ class Client extends Model
             'active' => 'boolean',
             'credit_limit' => 'decimal:2',
             'payment_term_days' => 'integer',
+            'master_created_at' => 'date',
         ];
     }
 

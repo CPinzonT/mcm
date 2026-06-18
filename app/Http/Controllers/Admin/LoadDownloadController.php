@@ -225,6 +225,7 @@ class LoadDownloadController extends Controller
             'contacto',
             'email_contacto',
             'telefono_contacto',
+            'fecha_creacion',
         ];
 
         return response()->streamDownload(function () use ($headers): void {

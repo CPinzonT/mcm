@@ -11,14 +11,17 @@ class ClientContactImportValidationService
     private const HEADER_ALIASES = [
         'nit' => ['nit', 'documento', 'document_number', 'numero_documento', 'identificacion', 'tax_id'],
         'code' => ['codigo', 'code', 'cuenta', 'cod_cliente', 'cliente_codigo'],
-        'name' => ['nombre', 'cliente', 'razon_social', 'nombre_cliente', 'name'],
+        'name' => [
+            'nombre', 'cliente', 'razon_social', 'nombre_cliente', 'name', 'nombre_sn',
+        ],
         'email' => ['email', 'correo', 'correo_electronico', 'e_mail'],
-        'phone' => ['telefono', 'teléfono', 'phone', 'celular', 'movil'],
-        'address' => ['direccion', 'dirección', 'address', 'domicilio'],
-        'city' => ['ciudad', 'city', 'municipio'],
-        'region' => ['regional', 'region', 'zona'],
+        'phone' => ['telefono', 'teléfono', 'phone', 'celular', 'movil', 'telefono_movil'],
+        'address' => ['direccion', 'dirección', 'address', 'domicilio', 'direccion_mm'],
+        'city' => ['ciudad', 'city', 'municipio', 'ciudad_mm'],
+        'region' => ['regional', 'region', 'zona', 'territorio'],
         'channel' => ['canal', 'channel', 'desc_canal', 'grupo'],
         'uen' => ['uen', 'unidad_de_negocio', 'business_unit'],
+        'credit_limit' => ['limite_de_credito', 'limite_credito', 'credit_limit'],
         'contact_name' => ['contacto', 'contact_name', 'nombre_contacto', 'contacto_responsable'],
         'contact_email' => ['email_contacto', 'correo_contacto', 'contact_email'],
         'contact_phone' => ['telefono_contacto', 'teléfono_contacto', 'contact_phone', 'celular_contacto'],
@@ -72,7 +75,7 @@ class ClientContactImportValidationService
 
                 if ($rowNumber > 40) {
                     $errors[] = LoadValidationErrorData::general(
-                        'No se encontró la fila de encabezados (NIT o código de cliente).',
+                        'No se encontró la fila de encabezados con columna NIT.',
                         'missing_headers',
                     );
                     break;
@@ -92,12 +95,12 @@ class ClientContactImportValidationService
             $documentNumber = $this->normalizer->normalizeDocumentNumber($payload['nit'] ?? null);
             $code = $this->normalizer->normalizeText($payload['code'] ?? null, 50);
 
-            if ($documentNumber === null && $code === null) {
+            if ($documentNumber === null) {
                 $errors[] = new LoadValidationErrorData(
                     $rowNumber,
                     'nit',
                     'required',
-                    'Indica NIT o código para identificar el cliente.',
+                    'Indica el NIT para identificar el cliente.',
                 );
                 continue;
             }
@@ -149,7 +152,7 @@ class ClientContactImportValidationService
      */
     private function hasRequiredHeaders(array $map): bool
     {
-        return isset($map['nit']) || isset($map['code']);
+        return isset($map['nit']);
     }
 
     /**
@@ -224,6 +227,7 @@ class ClientContactImportValidationService
             'contact_name' => fn (mixed $v) => $this->normalizer->normalizeText($v, 255),
             'contact_email' => fn (mixed $v) => $this->normalizer->normalizeText($v, 255),
             'contact_phone' => fn (mixed $v) => $this->normalizer->normalizePhone($v, 30),
+            'credit_limit' => fn (mixed $v) => $this->normalizeCreditLimit($v),
         ];
 
         foreach ($map as $field => $normalizer) {
@@ -243,5 +247,16 @@ class ClientContactImportValidationService
     private function parseMasterCreatedAt(array $payload): ?\Carbon\CarbonImmutable
     {
         return $this->normalizer->parseDate($payload['fecha_creacion'] ?? null);
+    }
+
+    private function normalizeCreditLimit(mixed $value): ?float
+    {
+        $text = trim((string) ($value ?? ''));
+
+        if ($text === '' || $text === '-') {
+            return null;
+        }
+
+        return $this->normalizer->parseNumber($value);
     }
 }

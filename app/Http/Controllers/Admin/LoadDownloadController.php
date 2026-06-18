@@ -212,20 +212,17 @@ class LoadDownloadController extends Controller
     public function clientContactsTemplate()
     {
         $headers = [
-            'nit',
-            'codigo',
-            'nombre',
-            'email',
-            'telefono',
-            'direccion',
-            'ciudad',
-            'regional',
-            'canal',
-            'uen',
-            'contacto',
-            'email_contacto',
-            'telefono_contacto',
-            'fecha_creacion',
+            'NIT',
+            'Nombre SN',
+            'Fecha de creación',
+            'Canal',
+            'Territorio',
+            'Código de cc',
+            'Límite de crédito',
+            'Teléfono móvil',
+            'Correo electrónico',
+            'Ciudad (MM)',
+            'Dirección (MM)',
         ];
 
         return response()->streamDownload(function () use ($headers): void {

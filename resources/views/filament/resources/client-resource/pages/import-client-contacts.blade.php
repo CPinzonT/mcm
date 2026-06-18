@@ -60,7 +60,7 @@
         <article class="ops-upload-card">
             <div class="ops-section-title">Archivo maestro</div>
             <p class="ops-section-copy">
-                El archivo debe incluir NIT o código del cliente y al menos un dato de contacto a actualizar. Solo se modifican clientes ya existentes.
+                El archivo debe incluir la columna NIT (identificador del cliente) y al menos un dato a actualizar. Solo se modifican clientes ya existentes.
             </p>
 
             <form wire:submit.prevent="submitUpload">
@@ -96,10 +96,9 @@
             <div class="ops-panel">
                 <div class="ops-section-title">Columnas del maestro</div>
                 <div class="ops-step-list">
-                    <div><strong>Identificación.</strong><span>NIT o código (obligatorio al menos uno).</span></div>
-                    <div><strong>Contacto empresa.</strong><span>Correo, teléfono, dirección, ciudad, regional, canal, UEN.</span></div>
-                    <div><strong>Fecha de creación.</strong><span>Columna fecha_creacion del maestro SAP (se muestra en la ficha del cliente).</span></div>
-                    <div><strong>Contacto responsable.</strong><span>Nombre, correo y teléfono del contacto.</span></div>
+                    <div><strong>NIT.</strong><span>Identificador obligatorio (con o sin dígito de verificación, ej. 901276722-2).</span></div>
+                    <div><strong>Datos del maestro.</strong><span>Nombre SN, fecha de creación, canal, territorio, límite de crédito, teléfono móvil, correo, ciudad y dirección.</span></div>
+                    <div><strong>Coincidencia.</strong><span>Se busca el cliente por NIT en documento o código interno, probando también la variante sin dígito de verificación.</span></div>
                 </div>
             </div>
 

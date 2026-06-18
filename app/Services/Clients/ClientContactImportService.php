@@ -15,6 +15,7 @@ class ClientContactImportService
 {
     public function __construct(
         private readonly ClientContactImportValidationService $validationService,
+        private readonly ClientNitMatcher $nitMatcher,
     ) {}
 
     /**
@@ -87,7 +88,7 @@ class ClientContactImportService
                         'row_number' => $row['row_number'],
                         'field' => 'nit',
                         'error_code' => 'not_found',
-                        'message' => 'Cliente no encontrado con el NIT o código indicado.',
+                        'message' => 'Cliente no encontrado con el NIT indicado.',
                     ];
                     continue;
                 }
@@ -141,20 +142,14 @@ class ClientContactImportService
      */
     private function resolveClient(array $row): ?Client
     {
-        if (! empty($row['document_number'])) {
-            $client = Client::query()
-                ->where('document_number', $row['document_number'])
-                ->first();
+        $client = $this->nitMatcher->find($row['document_number'] ?? null);
 
-            if ($client) {
-                return $client;
-            }
+        if ($client !== null) {
+            return $client;
         }
 
         if (! empty($row['code'])) {
-            return Client::query()
-                ->where('code', $row['code'])
-                ->first();
+            return $this->nitMatcher->find($row['code']);
         }
 
         return null;

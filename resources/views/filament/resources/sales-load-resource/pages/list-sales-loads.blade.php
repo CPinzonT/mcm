@@ -139,9 +139,9 @@
             <div class="ops-panel ops-panel-soft">
                 <div class="ops-section-title">Columnas esperadas</div>
                 <div class="ops-step-list">
-                    <div><strong>Minimas.</strong><span>Fecha de venta, documento o cliente, valor de venta.</span></div>
-                    <div><strong>Opcionales.</strong><span>NIT, producto, cantidad, vendedor, UEN, regional, canal.</span></div>
-                    <div><strong>Periodo.</strong><span>Se infiere del mes de la fecha de venta cuando el archivo es homogeneo.</span></div>
+                    <div><strong>Cruce con cartera.</strong><span>Cliente, Código de cl, No. Factura y NIT (si aplica).</span></div>
+                    <div><strong>Rotación.</strong><span>Indicador: (saldo cartera / ventas 12 meses) × 360.</span></div>
+                    <div><strong>Archivo maestro.</strong><span>31 columnas del reporte de ventas (Source.Name … Gestión Com).</span></div>
                 </div>
             </div>
         </aside>

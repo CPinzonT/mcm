@@ -345,9 +345,9 @@ class ViewClient extends ViewRecord
 
         $recaudo = (float) $recaudoQuery->sum('amount');
 
-        $rotationDays = ($recaudo > 0 && $cartera > 0)
-            ? round($cartera / ($recaudo / 30), 1)
-            : null;
+        $rotationService = app(\App\Services\Clients\ClientSalesRotationService::class);
+        $sales12Months = $rotationService->salesLast12Months($client);
+        $rotationDays = $rotationService->rotationDays($client, $cartera);
 
         $plazoDays = $client->payment_term_days;
         if ($plazoDays === null) {
@@ -363,6 +363,7 @@ class ViewClient extends ViewRecord
             'cupo_es_maestro'   => $client->credit_limit !== null,
             'cartera_pendiente' => $cartera,
             'rotation_days'     => $rotationDays,
+            'sales_12_months'   => $sales12Months,
             'plazo_days'        => $plazoDays,
             'recaudo_mes'       => $recaudo,
         ];

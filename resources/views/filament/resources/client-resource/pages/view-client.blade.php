@@ -608,10 +608,10 @@
                 <p class="cv-kpi-val {{ $ckpis['plazo_days'] && $ckpis['rotation_days'] > $ckpis['plazo_days'] ? 'warn' : '' }}">
                     {{ number_format($ckpis['rotation_days'], 1, ',', '.') }}<small style="font-size:.65em;font-weight:500;color:var(--mcm-muted);">d</small>
                 </p>
-                <p class="cv-kpi-sub">Días reales de rotación (cartera / recaudo de la carga activa)</p>
+                <p class="cv-kpi-sub">(Cartera / ventas 12 meses) × 360 · Ventas 12m: ${{ number_format($ckpis['sales_12_months'], 0, ',', '.') }}</p>
             @else
                 <p class="cv-kpi-val" style="font-size:.95rem;color:var(--mcm-muted);">—</p>
-                <p class="cv-kpi-sub">Sin recaudo en el mes o sin cartera</p>
+                <p class="cv-kpi-sub">Sin ventas cargadas en 12 meses o sin cartera pendiente</p>
             @endif
         </div>
         <div class="cv-kpi-item">

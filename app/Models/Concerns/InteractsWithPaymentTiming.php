@@ -3,6 +3,7 @@
 namespace App\Models\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 
 trait InteractsWithPaymentTiming
@@ -78,7 +79,7 @@ trait InteractsWithPaymentTiming
 
         return $query
             ->whereNotNull("{$table}.payment_date")
-            ->whereExists(function (Builder $sub) use ($table): void {
+            ->whereExists(function (QueryBuilder $sub) use ($table): void {
                 $sub->selectRaw('1')
                     ->from('portfolio_documents as pd')
                     ->whereColumn('pd.id', "{$table}.portfolio_document_id")

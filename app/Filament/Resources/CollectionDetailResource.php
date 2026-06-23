@@ -12,6 +12,7 @@ use Filament\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class CollectionDetailResource extends Resource
 {
@@ -32,6 +33,13 @@ class CollectionDetailResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema;
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->forLatestActiveLoad()
+            ->with(['portfolioDocument:id,due_date']);
     }
 
     public static function table(Table $table): Table
@@ -58,6 +66,27 @@ class CollectionDetailResource extends Resource
                 TextColumn::make('payment_date')
                     ->label('Fecha pago')
                     ->date('d/m/Y'),
+                TextColumn::make('portfolioDocument.due_date')
+                    ->label('Fecha vencimiento')
+                    ->date('d/m/Y')
+                    ->placeholder('—'),
+                TextColumn::make('payment_days_before_due')
+                    ->label('Días anticipo')
+                    ->alignEnd()
+                    ->state(fn (CollectionDetail $record): ?string => self::formatPaymentDaysBeforeDue($record))
+                    ->color(fn (CollectionDetail $record): string => $record->isEarlyPayment() ? 'success' : 'gray')
+                    ->placeholder('—'),
+                TextColumn::make('payment_timing')
+                    ->label('Momento')
+                    ->badge()
+                    ->state(fn (CollectionDetail $record): ?string => self::paymentTimingLabel($record))
+                    ->color(fn (?string $state): string => match ($state) {
+                        'Anticipado'      => 'success',
+                        'Al vencimiento'  => 'info',
+                        'Pago tardío'     => 'warning',
+                        default           => 'gray',
+                    })
+                    ->placeholder('Sin factura'),
                 TextColumn::make('reconciliation_status')
                     ->label('Estado conciliación')
                     ->badge()
@@ -145,5 +174,43 @@ class CollectionDetailResource extends Resource
         return [
             'index' => Pages\ListCollectionDetails::route('/'),
         ];
+    }
+
+    private static function formatPaymentDaysBeforeDue(CollectionDetail $record): ?string
+    {
+        $days = $record->paymentDaysBeforeDue();
+
+        if ($days === null) {
+            return null;
+        }
+
+        if ($days > 0) {
+            return number_format($days, 0, ',', '.');
+        }
+
+        if ($days === 0) {
+            return '0';
+        }
+
+        return number_format($days, 0, ',', '.');
+    }
+
+    private static function paymentTimingLabel(CollectionDetail $record): ?string
+    {
+        $days = $record->paymentDaysBeforeDue();
+
+        if ($days === null) {
+            return null;
+        }
+
+        if ($days > 0) {
+            return 'Anticipado';
+        }
+
+        if ($days === 0) {
+            return 'Al vencimiento';
+        }
+
+        return 'Pago tardío';
     }
 }

@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\InteractsWithPaymentTiming;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CollectionDetail extends Model
 {
+    use InteractsWithPaymentTiming;
     protected $fillable = [
         'collection_load_id', 'row_number', 'client_id', 'client_name', 'portfolio_document_id',
         'document_number', 'document_type', 'receipt_number', 'reconciliation_id',

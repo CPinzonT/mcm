@@ -28,14 +28,18 @@ class ExportService
     {
         $headers = [
             'Documento', 'Cliente', 'Nro. Recibo', 'Tipo Doc',
-            'Importe Aplicado', 'Saldo Tras Pago', 'Fecha Pago',
+            'Importe Aplicado', 'Saldo Tras Pago', 'Fecha Pago', 'Fecha Vencimiento',
+            'Días Anticipo', 'Momento Pago',
             'Regional', 'Canal', 'UEN', 'Vendedor',
             'Bucket Mora', 'Estado Conciliación', 'Notas',
         ];
 
         $filename = 'recaudos_' . now()->format('Ymd_His') . '.xlsx';
 
-        $query = CollectionDetail::query()->orderBy('id');
+        $query = CollectionDetail::query()
+            ->forLatestActiveLoad()
+            ->with(['portfolioDocument:id,due_date'])
+            ->orderBy('id');
 
         if ($periodKey !== null && $periodKey !== '') {
             $query->where('period_key', $periodKey);
@@ -49,6 +53,14 @@ class ExportService
             (float) $r->amount,
             $r->pending_amount_after !== null ? (float) $r->pending_amount_after : '',
             $r->payment_date?->format('Y-m-d'),
+            $r->portfolioDocument?->due_date?->format('Y-m-d') ?? '',
+            $r->paymentDaysBeforeDue() ?? '',
+            match (true) {
+                $r->isEarlyPayment() => 'Anticipado',
+                $r->paymentDaysBeforeDue() === 0 => 'Al vencimiento',
+                $r->paymentDaysBeforeDue() !== null && $r->paymentDaysBeforeDue() < 0 => 'Pago tardío',
+                default => '',
+            },
             $r->regional,
             $r->channel,
             $r->uen,

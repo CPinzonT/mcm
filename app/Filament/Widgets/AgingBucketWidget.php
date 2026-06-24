@@ -2,8 +2,8 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\CollectionDetail;
 use App\Models\PortfolioDocument;
+use Filament\Support\RawJs;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\DB;
 
@@ -88,7 +88,9 @@ class AgingBucketWidget extends ChartWidget
             'plugins' => [
                 'legend' => ['position' => 'right'],
                 'tooltip' => [
-                    'callbacks' => [],
+                    'callbacks' => [
+                        'label' => RawJs::make('function(ctx) { return window.mcmFmtChartMoney ? window.mcmFmtChartMoney(ctx.raw) : ctx.raw; }'),
+                    ],
                 ],
             ],
             'cutout' => '60%',

@@ -218,12 +218,13 @@ document.addEventListener('alpine:init', () => {
         buildDoughnut(ref, data) {
             const canvas = this.$refs[ref]; if (!canvas) return; const t = this.chartTheme();
             if (this._charts[ref]) this._charts[ref].destroy();
-            this._charts[ref] = new Chart(canvas, { type: 'doughnut', data, options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, color: t.text, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` $${ctx.raw.toLocaleString('es-CO')}` } } } } });
+            this._charts[ref] = new Chart(canvas, { type: 'doughnut', data, options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, color: t.text, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => (window.mcmFmtChartMoney ? window.mcmFmtChartMoney(ctx.raw) : ` $${ctx.raw.toLocaleString('es-CO')}`) } } } } });
         },
         buildPareto(ref, data) {
             const canvas = this.$refs[ref]; if (!canvas) return; const t = this.chartTheme();
             if (this._charts[ref]) this._charts[ref].destroy();
-            this._charts[ref] = new Chart(canvas, { data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, color: t.text, font: { size: 11 } } } }, scales: { x: { grid: { display: false }, ticks: { color: t.text, font: { size: 9 }, maxRotation: 30 } }, y: { position: 'left', grid: { color: t.grid }, ticks: { color: t.text, callback: v => '$'+(v/1e6).toFixed(1)+'M', font: { size: 10 } } }, y1: { position: 'right', grid: { display: false }, ticks: { color: t.text, callback: v => v+'%', font: { size: 10 } }, min: 0, max: 100 } } } });
+            const fmt = v => (window.mcmFmtChartMoney ? window.mcmFmtChartMoney(v) : '$' + (v / 1e6).toFixed(1) + ' M');
+            this._charts[ref] = new Chart(canvas, { data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, color: t.text, font: { size: 11 } } } }, scales: { x: { grid: { display: false }, ticks: { color: t.text, font: { size: 9 }, maxRotation: 30 } }, y: { position: 'left', grid: { color: t.grid }, ticks: { color: t.text, callback: fmt, font: { size: 10 } } }, y1: { position: 'right', grid: { display: false }, ticks: { color: t.text, callback: v => v+'%', font: { size: 10 } }, min: 0, max: 100 } } } });
         },
     }));
 });

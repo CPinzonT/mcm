@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Models\CollectionDetail;
+use Filament\Support\RawJs;
 use Filament\Widgets\ChartWidget;
 
 class CollectionTrendWidget extends ChartWidget
@@ -47,8 +48,22 @@ class CollectionTrendWidget extends ChartWidget
     protected function getOptions(): array
     {
         return [
-            'plugins' => ['legend' => ['display' => false]],
-            'scales'  => ['y' => ['beginAtZero' => true]],
+            'plugins' => [
+                'legend' => ['display' => false],
+                'tooltip' => [
+                    'callbacks' => [
+                        'label' => RawJs::make('function(ctx) { return window.mcmFmtChartMoney ? window.mcmFmtChartMoney(ctx.raw) : ctx.raw; }'),
+                    ],
+                ],
+            ],
+            'scales' => [
+                'y' => [
+                    'beginAtZero' => true,
+                    'ticks' => [
+                        'callback' => RawJs::make('function(value) { return window.mcmFmtChartMoney ? window.mcmFmtChartMoney(value) : value; }'),
+                    ],
+                ],
+            ],
         ];
     }
 }

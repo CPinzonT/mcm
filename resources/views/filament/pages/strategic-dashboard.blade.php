@@ -894,12 +894,19 @@ document.addEventListener('alpine:init', () => {
         _hasDatalabels: typeof ChartDataLabels !== 'undefined',
 
         fmtShortMoney(v) {
+            if (typeof window.mcmFmtChartMoney === 'function') {
+                return window.mcmFmtChartMoney(v);
+            }
+
             const n = Number(v);
             if (!isFinite(n)) return '';
-            const a = Math.abs(n);
-            if (a >= 1e9) return '$' + (n / 1e9).toFixed(1) + 'B';
-            if (a >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
-            if (a >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'K';
+            const abs = Math.abs(n);
+            if (abs >= 1e6) {
+                const millions = n / 1e6;
+                const decimals = Math.abs(millions) >= 1000 ? 0 : 1;
+                return '$' + millions.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decimals }) + ' M';
+            }
+            if (abs >= 1e3) return '$' + (n / 1e3).toLocaleString('es-CO', { maximumFractionDigits: 0 }) + ' K';
             return '$' + Math.round(n).toLocaleString('es-CO');
         },
 
@@ -1018,11 +1025,11 @@ document.addEventListener('alpine:init', () => {
                 },
                 scales: type === 'doughnut' ? {} : {
                     x: horizontal
-                        ? { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => '$'+(v/1e6).toFixed(1)+'M' } }
+                        ? { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => this.fmtShortMoney(v) } }
                         : { grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } },
                     y: horizontal
                         ? { grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } }
-                        : { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => '$'+(v/1e6).toFixed(1)+'M' } },
+                        : { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => this.fmtShortMoney(v) } },
                 },
                 indexAxis: horizontal ? 'y' : 'x',
             };
@@ -1107,7 +1114,7 @@ document.addEventListener('alpine:init', () => {
                     },
                     scales: {
                         x: { grid: { display: false }, ticks: { color: t.text, font: { size: 9 } } },
-                        y:  { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => '$'+(v/1e6).toFixed(1)+'M' } },
+                        y:  { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => self.fmtShortMoney(v) } },
                         y1: { position: 'right', grid: { display: false }, ticks: { color: t.text, font: { size: 10 }, callback: v => v+'%' }, min: 0, max: 100 },
                     },
                     plugins: {
@@ -1145,7 +1152,7 @@ document.addEventListener('alpine:init', () => {
                     },
                     scales: {
                         x: { grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } },
-                        y: { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => '$'+(v/1e6).toFixed(1)+'M' }, grace: '12%' },
+                        y: { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => self.fmtShortMoney(v) }, grace: '12%' },
                     },
                 });
             }
@@ -1178,7 +1185,7 @@ document.addEventListener('alpine:init', () => {
                     },
                     scales: {
                         x: { grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } },
-                        y: { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => '$'+(v/1e6).toFixed(1)+'M' }, grace: '12%' },
+                        y: { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => self.fmtShortMoney(v) }, grace: '12%' },
                     },
                 });
             }
@@ -1218,7 +1225,7 @@ document.addEventListener('alpine:init', () => {
                     scales: {
                         x: {
                             grid: { color: t.grid },
-                            ticks: { color: t.text, font: { size: 10 }, callback: v => '$'+(v/1e6).toFixed(1)+'M' },
+                            ticks: { color: t.text, font: { size: 10 }, callback: v => self.fmtShortMoney(v) },
                             grace: '20%',
                             suggestedMax: maxVal > 0 ? maxVal * 1.22 : undefined,
                         },
@@ -1278,7 +1285,7 @@ document.addEventListener('alpine:init', () => {
                             plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, color: t.text, font: { size: 10 } } } },
                             scales: {
                                 x:  { grid: { display: false }, ticks: { color: t.text, font: { size: 9 }, maxRotation: 25 } },
-                                y:  { position: 'left',  grid: { color: t.grid }, ticks: { color: t.text, callback: v => '$'+(v/1e6).toFixed(1)+'M', font: { size: 10 } }, grace: '15%' },
+                                y:  { position: 'left',  grid: { color: t.grid }, ticks: { color: t.text, callback: v => self.fmtShortMoney(v), font: { size: 10 } }, grace: '15%' },
                                 y1: { position: 'right', grid: { display: false }, ticks: { color: t.text, callback: v => v+'%', font: { size: 10 } }, min: 0, max: 100 },
                             },
                         },

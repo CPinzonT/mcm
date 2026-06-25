@@ -98,7 +98,9 @@ class ClientResource extends Resource
                         ->numeric()
                         ->integer()
                         ->suffix('días')
-                        ->helperText('Plazo contratado: vencimiento − fecha documento'),
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->helperText('Solo se actualiza por carga de cartera (columna plazo o vencimiento − emisión)'),
                 ]),
 
             Section::make('Contacto Responsable')

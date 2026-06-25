@@ -88,6 +88,22 @@ class StrategicDashboard extends Page
         return app(DashboardFilterCascadeService::class)->accountingMonthOptions($this->dashboardFiltersData());
     }
 
+    /** @return array<string, string> YYYY => YYYY */
+    #[Computed]
+    public function accountingYearOptions(): array
+    {
+        $years = [];
+        foreach (array_keys($this->accountingMonthOptions) as $ym) {
+            $year = substr((string) $ym, 0, 4);
+            if ($year !== '') {
+                $years[$year] = $year;
+            }
+        }
+        krsort($years);
+
+        return $years;
+    }
+
     #[Computed]
     public function uenOptions(): array
     {
@@ -237,6 +253,7 @@ class StrategicDashboard extends Page
             $this->documentTypeOptions,
             $this->accountingMonthOptions,
             $this->accountingMonthOptionsShort,
+            $this->accountingYearOptions,
             $this->activeDateRangeLabel,
         );
         $this->dispatch('charts-updated', charts: $this->charts);
@@ -397,6 +414,9 @@ class StrategicDashboard extends Page
         $this->compareMode = !$this->compareMode;
         if ($this->compareMode) {
             $this->comparePeriodA = array_key_first($this->accountingMonthOptions) ?: null;
+            $years = array_keys($this->accountingYearOptions);
+            $this->compareValueA = $years[0] ?? null;
+            $this->compareValueB = $years[1] ?? null;
         }
         unset($this->comparison);
     }
@@ -633,11 +653,64 @@ class StrategicDashboard extends Page
             ];
         }
 
+        if ($this->compareType === 'year') {
+            if (!$this->compareValueA || !$this->compareValueB) return [null, null];
+            $yearA = (int) $this->compareValueA;
+            $yearB = (int) $this->compareValueB;
+            if ($yearA < 1 || $yearB < 1) return [null, null];
+
+            return [
+                DashboardFiltersData::fromArray(array_merge($base, [
+                    'date_from' => "{$yearA}-01-01",
+                    'date_to'   => "{$yearA}-12-31",
+                ])),
+                DashboardFiltersData::fromArray(array_merge($base, [
+                    'date_from' => "{$yearB}-01-01",
+                    'date_to'   => "{$yearB}-12-31",
+                ])),
+            ];
+        }
+
         return [null, null];
     }
 
     private function buildPreviousPeriodComparison(): ?array
     {
+        $base = [
+            'channels'       => $this->selectedChannels,
+            'uens'           => $this->selectedUens,
+            'regionals'      => $this->selectedRegionals,
+            'advisors'       => $this->selectedAdvisors,
+            'document_types' => $this->selectedDocumentTypes,
+            'risk_levels'    => $this->selectedRiskLevels,
+        ];
+
+        $kpiService = app(KpiService::class);
+
+        if ($this->compareType === 'year') {
+            $currentYear = $this->dateTo
+                ? (int) \Carbon\Carbon::parse($this->dateTo)->format('Y')
+                : (int) \Carbon\Carbon::today()->format('Y');
+            $previousYear = $currentYear - 1;
+
+            $filtersA = DashboardFiltersData::fromArray(array_merge($base, [
+                'date_from' => "{$currentYear}-01-01",
+                'date_to'   => "{$currentYear}-12-31",
+            ]));
+            $filtersB = DashboardFiltersData::fromArray(array_merge($base, [
+                'date_from' => "{$previousYear}-01-01",
+                'date_to'   => "{$previousYear}-12-31",
+            ]));
+            $kpisA = $kpiService->compute($filtersA);
+            $kpisB = $kpiService->compute($filtersB);
+
+            return [
+                'a' => ['label' => (string) $currentYear, 'kpis' => $kpisA],
+                'b' => ['label' => (string) $previousYear, 'kpis' => $kpisB],
+                'deltas' => $this->computeDeltas($kpisA, $kpisB),
+            ];
+        }
+
         $periods = array_keys($this->accountingMonthOptions);
         if (count($periods) < 2) return null;
 
@@ -650,16 +723,6 @@ class StrategicDashboard extends Page
         $previousPeriod = $periods[($idx !== false && $idx + 1 < count($periods)) ? $idx + 1 : 1] ?? null;
         if (!$previousPeriod) return null;
 
-        $base = [
-            'channels'       => $this->selectedChannels,
-            'uens'           => $this->selectedUens,
-            'regionals'      => $this->selectedRegionals,
-            'advisors'       => $this->selectedAdvisors,
-            'document_types' => $this->selectedDocumentTypes,
-            'risk_levels'    => $this->selectedRiskLevels,
-        ];
-
-        $kpiService = app(KpiService::class);
         $filtersA = DashboardFiltersData::fromArray(array_merge($base, ['period' => $currentPeriod]));
         $filtersB = DashboardFiltersData::fromArray(array_merge($base, ['period' => $previousPeriod]));
         $kpisA = $kpiService->compute($filtersA);
@@ -700,6 +763,7 @@ class StrategicDashboard extends Page
     {
         return match($this->compareType) {
             'period'   => \Carbon\Carbon::parse($this->comparePeriodA . '-01')->translatedFormat('M Y'),
+            'year'     => 'Año ' . $this->compareValueA,
             'uen'      => 'UEN: ' . $this->compareValueA,
             'regional' => 'Regional: ' . $this->compareValueA,
             default    => 'A',
@@ -710,6 +774,7 @@ class StrategicDashboard extends Page
     {
         return match($this->compareType) {
             'period'   => \Carbon\Carbon::parse($this->comparePeriodB . '-01')->translatedFormat('M Y'),
+            'year'     => 'Año ' . $this->compareValueB,
             'uen'      => 'UEN: ' . $this->compareValueB,
             'regional' => 'Regional: ' . $this->compareValueB,
             default    => 'B',

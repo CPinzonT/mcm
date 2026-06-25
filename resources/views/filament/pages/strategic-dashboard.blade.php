@@ -440,11 +440,12 @@ body:has(.sd-page) .fi-page-content {
 
         <div class="sd-compare-type-tabs">
             <button wire:click="$set('compareType','period')" class="sd-compare-type-tab {{ $compareType === 'period' ? 'active' : '' }}">Período vs Período</button>
+            <button wire:click="$set('compareType','year')" class="sd-compare-type-tab {{ $compareType === 'year' ? 'active' : '' }}">Año vs Año</button>
             <button wire:click="$set('compareType','uen')" class="sd-compare-type-tab {{ $compareType === 'uen' ? 'active' : '' }}">UEN vs UEN</button>
             <button wire:click="$set('compareType','regional')" class="sd-compare-type-tab {{ $compareType === 'regional' ? 'active' : '' }}">Regional vs Regional</button>
             <label style="display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--mcm-muted);cursor:pointer;margin-left:auto;">
                 <input type="checkbox" wire:model.live="comparePrevious" style="accent-color:var(--mcm-accent);">
-                Período anterior automático
+                {{ $compareType === 'year' ? 'Año anterior automático' : 'Período anterior automático' }}
             </label>
         </div>
 
@@ -463,6 +464,21 @@ body:has(.sd-page) .fi-page-content {
                 <select wire:model="comparePeriodB" class="sd-filter-input">
                     <option value="">Seleccionar</option>
                     @foreach($this->accountingMonthOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
+                </select>
+            </div>
+            @elseif($compareType === 'year')
+            <div class="sd-filter-col">
+                <label>Año A</label>
+                <select wire:model="compareValueA" class="sd-filter-input">
+                    <option value="">Seleccionar</option>
+                    @foreach($this->accountingYearOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
+                </select>
+            </div>
+            <div class="sd-filter-col">
+                <label>Año B</label>
+                <select wire:model="compareValueB" class="sd-filter-input">
+                    <option value="">Seleccionar</option>
+                    @foreach($this->accountingYearOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach
                 </select>
             </div>
             @elseif($compareType === 'uen')

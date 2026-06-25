@@ -332,7 +332,11 @@ class KpiService
      */
     private function filtersForRecaudoMonthCut(DashboardFiltersData $filters): DashboardFiltersData
     {
-        [$start, $end] = $this->resolveDefaultMonthCutRange();
+        if ($filters->period || $this->isFullYearDateRange($filters)) {
+            [$start, $end] = $this->resolveCollectionPaymentDateRange($filters);
+        } else {
+            [$start, $end] = $this->resolveDefaultMonthCutRange();
+        }
 
         return new DashboardFiltersData(
             period: null,
@@ -350,6 +354,22 @@ class KpiService
             riskLevels: $filters->riskLevels,
             documentTypes: $filters->documentTypes,
         );
+    }
+
+    private function isFullYearDateRange(DashboardFiltersData $filters): bool
+    {
+        if (!$filters->dateFrom || !$filters->dateTo) {
+            return false;
+        }
+
+        $from = \Carbon\Carbon::parse($filters->dateFrom);
+        $to   = \Carbon\Carbon::parse($filters->dateTo);
+
+        return $from->month === 1
+            && $from->day === 1
+            && $to->month === 12
+            && $to->day === 31
+            && $from->year === $to->year;
     }
 
     // ── Recaudo ────────────────────────────────────────────────────────────

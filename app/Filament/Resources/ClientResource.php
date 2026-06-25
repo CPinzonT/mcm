@@ -90,7 +90,9 @@ class ClientResource extends Resource
                         ->label('Cupo asignado')
                         ->numeric()
                         ->prefix('$')
-                        ->helperText('Cupo del cliente en maestro SAP'),
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->helperText('Solo se actualiza por importación del maestro SAP'),
                     TextInput::make('payment_term_days')
                         ->label('Plazo (días)')
                         ->numeric()

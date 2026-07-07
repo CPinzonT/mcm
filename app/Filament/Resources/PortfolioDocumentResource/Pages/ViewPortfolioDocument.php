@@ -5,6 +5,7 @@ namespace App\Filament\Resources\PortfolioDocumentResource\Pages;
 use App\Filament\Resources\PortfolioDocumentResource;
 use App\Models\ManagementLog;
 use App\Models\PortfolioDocument;
+use App\Services\Documents\DocumentTraceabilityService;
 use App\Services\Management\ManagementLogWriter;
 use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
@@ -35,8 +36,21 @@ class ViewPortfolioDocument extends ViewRecord
     public function mount(int|string $record): void
     {
         parent::mount($record);
+        $this->record->loadMissing(['client', 'advisor', 'portfolioLoad']);
         $this->mgContactDate = now()->format('Y-m-d');
         $this->mgContactTime = now()->format('H:i');
+    }
+
+    #[Computed]
+    public function documentTraceSummary(): array
+    {
+        return app(DocumentTraceabilityService::class)->documentFinancialSummary($this->record);
+    }
+
+    #[Computed]
+    public function documentTraceTimeline(): array
+    {
+        return app(DocumentTraceabilityService::class)->documentTimeline($this->record);
     }
 
     public function saveManagement(): void

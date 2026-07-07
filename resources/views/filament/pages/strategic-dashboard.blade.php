@@ -274,7 +274,6 @@ body:has(.sd-page) .fi-page-content {
 }
 .sd-cascade-hint { display: none !important; }
 .sd-chart-hint { display: none !important; }
-.sd-client-filter-hint { display: none !important; }
 .sd-daterange-block {
     display: flex;
     flex-direction: column;
@@ -788,8 +787,27 @@ body:has(.sd-page) .fi-page-content {
 
         {{-- Cliente (cascada: solo clientes con documentos activos bajo UEN/Canal/Asesor/…) --}}
         <div class="sd-filter-card sd-filter-card--wide sd-checklist-section sd-filt-cliente">
-            <div class="sd-checklist-title">Cliente</div>
+            @php
+                $clientShown = count($this->clientOptions);
+                $clientTotal = $this->clientOptionsCount;
+            @endphp
+            <div class="sd-checklist-title">
+                Cliente
+                <span style="font-size:.6rem;color:var(--mcm-accent);font-weight:700;margin-left:.3rem;">
+                    ({{ number_format($clientTotal, 0, ',', '.') }})
+                </span>
+                @if($this->clientId)
+                    <span style="font-size:.6rem;color:var(--mcm-green);font-weight:700;margin-left:.3rem;">· 1 seleccionado</span>
+                @endif
+            </div>
             <input type="text" wire:model.live.debounce.300ms="clientSearch" class="sd-filter-search" placeholder="Buscar cliente...">
+            @if($clientTotal > $clientShown)
+            <p class="sd-client-filter-hint">
+                Mostrando {{ number_format($clientShown, 0, ',', '.') }} de {{ number_format($clientTotal, 0, ',', '.') }} clientes. Refine la búsqueda para acotar la lista.
+            </p>
+            @elseif(trim($this->clientSearch) !== '' && $clientTotal === 0)
+            <p class="sd-client-filter-hint">Sin clientes que coincidan con la búsqueda.</p>
+            @endif
             <div class="sd-checklist-items">
                 @foreach($this->clientOptions as $id => $name)
                 <label class="sd-check-item" wire:key="client-opt-{{ (int) $id }}">

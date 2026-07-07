@@ -148,6 +148,13 @@ class StrategicDashboard extends Page
             ->clientOptions($this->dashboardFiltersData(), $this->clientSearch, $limit);
     }
 
+    #[Computed]
+    public function clientOptionsCount(): int
+    {
+        return app(DashboardFilterCascadeService::class)
+            ->clientOptionsCount($this->dashboardFiltersData(), $this->clientSearch);
+    }
+
     // ── Datos reactivos ─────────────────────────────────────────
 
     /** Misma data que {@see filters()} sin depender del cache Computed (para cascada y poda). */
@@ -246,6 +253,7 @@ class StrategicDashboard extends Page
             $this->filters,
             $this->comparison,
             $this->clientOptions,
+            $this->clientOptionsCount,
             $this->uenOptions,
             $this->channelOptions,
             $this->regionalOptions,
@@ -519,7 +527,7 @@ class StrategicDashboard extends Page
 
     public function updatedClientSearch(): void
     {
-        unset($this->clientOptions);
+        unset($this->clientOptions, $this->clientOptionsCount);
     }
 
     public function updatedAdvisorSearch(): void

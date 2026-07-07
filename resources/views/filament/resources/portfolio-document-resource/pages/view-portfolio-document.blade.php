@@ -207,6 +207,56 @@
 
 /* ── Error messages ────────────────────────────────────── */
 .vd-error { font-size: .73rem; color: var(--mcm-red); margin-top: .25rem; }
+
+/* ── Document traceability ─────────────────────────────── */
+.vd-trace-kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: .75rem;
+}
+@media (max-width: 860px) { .vd-trace-kpi-strip { grid-template-columns: repeat(2, 1fr); } }
+.vd-trace-kpi {
+    background: var(--mcm-surface);
+    border: 1px solid var(--mcm-border);
+    border-radius: 12px;
+    padding: .85rem 1rem;
+    box-shadow: var(--mcm-shadow-soft);
+}
+.vd-trace-kpi-label { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--mcm-muted); margin-bottom: .25rem; }
+.vd-trace-kpi-value { font-size: 1.1rem; font-weight: 700; color: var(--mcm-text); font-variant-numeric: tabular-nums; }
+.vd-trace-kpi-value.is-nc { color: var(--mcm-amber); }
+.vd-trace-kpi-value.is-in { color: var(--mcm-green); }
+.vd-trace-kpi-value.is-out { color: var(--mcm-red); }
+
+.vd-trace-timeline { display: flex; flex-direction: column; }
+.vd-trace-item {
+    display: grid;
+    grid-template-columns: 88px 20px 1fr;
+    gap: .75rem 1rem;
+    padding: .85rem 0;
+    border-bottom: 1px solid var(--mcm-border);
+}
+.vd-trace-item:last-child { border-bottom: none; }
+.vd-trace-date { font-size: .72rem; color: var(--mcm-muted); text-align: right; font-variant-numeric: tabular-nums; padding-top: .15rem; }
+.vd-trace-rail { display: flex; flex-direction: column; align-items: center; }
+.vd-trace-dot {
+    width: 10px; height: 10px; border-radius: 99px; flex-shrink: 0; margin-top: .25rem;
+    border: 2px solid var(--mcm-surface);
+}
+.vd-trace-dot--generacion { background: var(--mcm-accent); }
+.vd-trace-dot--vencimiento { background: var(--mcm-muted); }
+.vd-trace-dot--nc { background: var(--mcm-amber); }
+.vd-trace-dot--recaudo { background: var(--mcm-green); }
+.vd-trace-dot--corte { background: var(--mcm-muted); }
+.vd-trace-body { min-width: 0; }
+.vd-trace-head { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin-bottom: .25rem; }
+.vd-trace-title { font-size: .875rem; font-weight: 600; color: var(--mcm-text); }
+.vd-trace-amount { font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: auto; }
+.vd-trace-amount.is-in { color: var(--mcm-green); }
+.vd-trace-amount.is-out { color: var(--mcm-amber); }
+.vd-trace-detail { font-size: .8rem; color: var(--mcm-muted); line-height: 1.45; margin: 0; }
+.vd-trace-meta { font-size: .72rem; color: var(--mcm-muted); margin: .3rem 0 0; }
+.vd-trace-meta .sep { opacity: .4; margin: 0 .25rem; }
 </style>
 @endpush
 
@@ -353,6 +403,48 @@
             <div class="vd-progress-track">
                 <div class="vd-progress-fill" style="width:{{ $pct }}%"></div>
             </div>
+        </div>
+    </div>
+
+    {{-- ── Trazabilidad documental ───────────────────────── --}}
+    @php
+        $traceSummary = $this->documentTraceSummary;
+        $traceTimeline = $this->documentTraceTimeline;
+    @endphp
+    <div class="vd-card mcm-reveal">
+        <div class="vd-card-header">
+            <span class="vd-card-title">Histórico de factura — trazabilidad</span>
+            <span style="font-size:.73rem; color:var(--mcm-muted);">{{ count($traceTimeline) }} evento(s)</span>
+        </div>
+        <div class="vd-card-body space-y-4">
+            <div class="vd-trace-kpi-strip">
+                <div class="vd-trace-kpi">
+                    <div class="vd-trace-kpi-label">Valor original</div>
+                    <div class="vd-trace-kpi-value">${{ number_format($traceSummary['original'], 0, ',', '.') }}</div>
+                </div>
+                <div class="vd-trace-kpi">
+                    <div class="vd-trace-kpi-label">NC aplicadas</div>
+                    <div class="vd-trace-kpi-value is-nc">
+                        @if($traceSummary['nc_total'] > 0)
+                            −${{ number_format($traceSummary['nc_total'], 0, ',', '.') }}
+                        @else
+                            —
+                        @endif
+                    </div>
+                </div>
+                <div class="vd-trace-kpi">
+                    <div class="vd-trace-kpi-label">Recaudado</div>
+                    <div class="vd-trace-kpi-value is-in">${{ number_format($traceSummary['collected'], 0, ',', '.') }}</div>
+                </div>
+                <div class="vd-trace-kpi">
+                    <div class="vd-trace-kpi-label">Saldo pendiente</div>
+                    <div class="vd-trace-kpi-value {{ $traceSummary['pending'] > 0 ? 'is-out' : 'is-in' }}">
+                        ${{ number_format($traceSummary['pending'], 0, ',', '.') }}
+                    </div>
+                </div>
+            </div>
+
+            @include('filament.partials.document-traceability-timeline', ['timeline' => $traceTimeline])
         </div>
     </div>
 

@@ -6,6 +6,8 @@ use App\Filament\Resources\ClientResource;
 use App\Models\CollectionDetail;
 use App\Models\ManagementLog;
 use App\Models\PortfolioDocument;
+use App\Services\Clients\ClientSalesRotationService;
+use App\Services\Documents\DocumentTraceabilityService;
 use App\Services\Management\ManagementLogWriter;
 use App\Services\Risk\RiskClassificationService;
 use Carbon\Carbon;
@@ -14,6 +16,7 @@ use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Computed;
 use Livewire\WithPagination;
 
 class ViewClient extends ViewRecord
@@ -407,5 +410,14 @@ class ViewClient extends ViewRecord
                 'promised_date' => $log->promised_date?->format('d/m/Y'),
             ])
             ->toArray();
+    }
+
+    #[Computed]
+    public function documentTraceRows(): array
+    {
+        return app(DocumentTraceabilityService::class)->clientDocumentRows(
+            (int) $this->record->id,
+            $this->activePortfolioDocumentsBaseQuery(),
+        );
     }
 }

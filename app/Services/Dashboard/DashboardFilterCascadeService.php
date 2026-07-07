@@ -167,6 +167,19 @@ class DashboardFilterCascadeService
         return $q->limit($limit)->pluck('c.name', 'c.id')->toArray();
     }
 
+    public function clientOptionsCount(DashboardFiltersData $filters, string $search = ''): int
+    {
+        $q = $this->baseQuery($filters, ['client'])
+            ->whereNotNull('c.name')
+            ->where('c.name', '!=', '');
+
+        if ($search !== '') {
+            $q->where('c.name', 'like', '%' . $search . '%');
+        }
+
+        return (int) $q->count(DB::raw('DISTINCT c.id'));
+    }
+
     public function documentTypeOptions(DashboardFiltersData $filters): array
     {
         return $this->baseQuery($filters, ['document_types'])

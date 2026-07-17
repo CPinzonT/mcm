@@ -107,8 +107,10 @@ $reportLabels = [
     'gestiones_gestor'     => 'Gestiones por Asesor',
     'acta_compromisos'     => 'Acta de compromisos',
     'analisis_vencimiento' => 'Análisis de Vencimiento',
+    'trazabilidad_documental' => 'Trazabilidad Documental',
 ];
 $isActa = $this->reportType === 'acta_compromisos';
+$isTraceability = $this->reportType === 'trazabilidad_documental';
 $exportUrl = $isActa ? $this->exportActaUrl() : null;
 $currentLabel = $reportLabels[$this->reportType] ?? null;
 $hasData = $currentLabel && count($this->rows ?? []) > 0;
@@ -130,17 +132,28 @@ $hasGenerated = $currentLabel && isset($this->rows);
 
     <section class="filter-bar mcm-reveal">
         <div class="rp-filter-grid">
-            <div><p class="filter-label">Tipo de reporte</p><select wire:model="reportType" class="filter-input"><option value="">— Seleccionar —</option>@foreach($reportLabels as $val => $lbl)<option value="{{ $val }}">{{ $lbl }}</option>@endforeach</select></div>
+            <div><p class="filter-label">Tipo de reporte</p><select wire:model.live="reportType" class="filter-input"><option value="">— Seleccionar —</option>@foreach($reportLabels as $val => $lbl)<option value="{{ $val }}">{{ $lbl }}</option>@endforeach</select></div>
             @if($isActa)
             <div><p class="filter-label">Fecha desde</p><input type="date" wire:model="dateFrom" class="filter-input" title="Rango por días"/></div>
             <div><p class="filter-label">Fecha hasta</p><input type="date" wire:model="dateTo" class="filter-input" title="Rango por días"/></div>
             <div><p class="filter-label">Mes desde</p><input type="month" wire:model="periodFrom" class="filter-input" title="Alternativa: rango por meses"/></div>
             <div><p class="filter-label">Mes hasta</p><input type="month" wire:model="periodTo" class="filter-input" title="Alternativa: rango por meses"/></div>
-            @else
+            @elseif(!$isTraceability)
             <div><p class="filter-label">Período desde</p><input type="month" wire:model="periodFrom" class="filter-input"/></div>
             <div><p class="filter-label">Período hasta</p><input type="month" wire:model="periodTo" class="filter-input"/></div>
             @endif
-            <div><p class="filter-label">UEN</p><select wire:model="uen" class="filter-input"><option value="">Todas</option>@foreach($this->uenOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
+            <div><p class="filter-label">UEN</p><select wire:model.live="uen" class="filter-input"><option value="">Todas</option>@foreach($this->uenOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
+            @if($isTraceability)
+            <div>
+                <p class="filter-label">Cliente</p>
+                <select wire:model="clientId" class="filter-input">
+                    <option value="">— Seleccionar cliente —</option>
+                    @foreach($this->traceabilityClientOptions as $id => $name)
+                    <option value="{{ $id }}">{{ $name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            @endif
             @if($isActa)
             <div><p class="filter-label">Canal</p><select wire:model="channel" class="filter-input"><option value="">Todos</option>@foreach($this->channelOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
             <div><p class="filter-label">Hora desde (opc.)</p><input type="time" wire:model="timeFrom" class="filter-input"/></div>
@@ -149,10 +162,16 @@ $hasGenerated = $currentLabel && isset($this->rows);
             <button wire:click="generateReport" class="btn-primary" style="align-self:flex-end"><x-heroicon-o-play style="width:1rem;height:1rem"/>Generar</button>
             @if($isActa && $exportUrl)
             <a href="{{ $exportUrl }}" target="_blank" class="btn-ghost" style="align-self:flex-end" title="Descarga Excel del acta de compromisos"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar acta</a>
-            @elseif(!$isActa && $hasData)
+            @elseif(!$isActa && !$isTraceability && $hasData)
             <a href="{{ route('admin.exports.portfolio', ['period' => $this->periodFrom]) }}" target="_blank" class="btn-ghost" style="align-self:flex-end"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar</a>
             @endif
         </div>
+        @if($isTraceability)
+        <p style="margin-top:.65rem;font-size:.78rem;color:var(--mcm-muted);">
+            Se consulta únicamente al presionar <strong style="color:var(--mcm-text-strong);">Generar</strong>.
+            Muestra hasta los 100 documentos más recientes del cliente en la cartera activa.
+        </p>
+        @endif
         @if($isActa && $this->actaDateRangeLabel())
         <p style="margin-top:.65rem;font-size:.78rem;color:var(--mcm-muted);">
             Rango del acta: <strong style="color:var(--mcm-text-strong);">{{ $this->actaDateRangeLabel() }}</strong>
@@ -179,7 +198,7 @@ $hasGenerated = $currentLabel && isset($this->rows);
         </div>
 
         @if(!$hasGenerated)
-        <div class="rp-empty"><x-heroicon-o-chart-bar-square/><p class="rp-empty-title">Configura y genera un reporte</p><p class="rp-empty-copy">Selecciona el tipo de reporte, el rango de período y haz clic en <strong>Generar</strong> para ver los resultados.</p></div>
+        <div class="rp-empty"><x-heroicon-o-chart-bar-square/><p class="rp-empty-title">Configura y genera un reporte</p><p class="rp-empty-copy">Selecciona el tipo de reporte, completa sus filtros y haz clic en <strong>Generar</strong> para ver los resultados.</p></div>
         @elseif(!$hasData)
         <div class="rp-empty"><x-heroicon-o-magnifying-glass/><p class="rp-empty-title">Sin resultados</p><p class="rp-empty-copy">No se encontraron datos para los filtros seleccionados. Ajusta el período o la UEN.</p></div>
         @else
@@ -191,8 +210,19 @@ $hasGenerated = $currentLabel && isset($this->rows);
                     <tr>
                         @foreach($this->columns as $col)
                         <td>
-                            @php $val = is_array($row) ? ($row[$col['key']] ?? '—') : ($row->{$col['key']} ?? '—'); @endphp
-                            @if(is_numeric($val) && $val > 1000) ${{ number_format((float)$val, 0, ',', '.') }} @else {{ $val ?? '—' }} @endif
+                            @php
+                                $val = is_array($row) ? ($row[$col['key']] ?? '—') : ($row->{$col['key']} ?? '—');
+                                $format = $col['format'] ?? null;
+                            @endphp
+                            @if($format === 'money')
+                                ${{ number_format((float) $val, 0, ',', '.') }}
+                            @elseif($format === 'text')
+                                {{ $val ?? '—' }}
+                            @elseif(is_numeric($val) && $val > 1000)
+                                ${{ number_format((float)$val, 0, ',', '.') }}
+                            @else
+                                {{ $val ?? '—' }}
+                            @endif
                         </td>
                         @endforeach
                     </tr>

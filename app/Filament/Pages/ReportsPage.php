@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Models\Client;
 use App\Models\ManagementLog;
 use App\Models\PortfolioDocument;
+use App\Services\Documents\DocumentTraceabilityService;
 use App\Services\Reports\CommitmentActaQuery;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -30,6 +31,7 @@ class ReportsPage extends Page
     public string $dateTo     = '';
     public string $timeFrom   = '';
     public string $timeTo     = '';
+    public string $clientId   = '';
 
     public ?array $rows    = null;
     public array  $columns = [];
@@ -56,6 +58,31 @@ class ReportsPage extends Page
             ->whereNotNull('channel')->where('channel', '!=', '')
             ->select('channel')->distinct()->orderBy('channel')
             ->pluck('channel', 'channel')->toArray();
+    }
+
+    #[Computed]
+    public function traceabilityClientOptions(): array
+    {
+        $loadId = DB::table('portfolio_loads')
+            ->where('is_active', true)
+            ->where('status', 'completed')
+            ->orderByDesc('period_date')
+            ->orderByDesc('version')
+            ->value('id');
+
+        if (! $loadId) {
+            return [];
+        }
+
+        return Client::query()
+            ->whereHas('portfolioDocuments', fn ($query) => $query
+                ->where('portfolio_load_id', $loadId)
+                ->whereIn('status', PortfolioDocument::BALANCE_STATUSES)
+                ->whereNull('deleted_at'))
+            ->when($this->uen, fn ($query) => $query->where('uen', $this->uen))
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->toArray();
     }
 
     public function exportActaUrl(): ?string
@@ -88,6 +115,31 @@ class ReportsPage extends Page
             : \Carbon\Carbon::parse($range[0])->format('d/m/Y') . ' – ' . \Carbon\Carbon::parse($range[1])->format('d/m/Y');
     }
 
+    public function updatedReportType(): void
+    {
+        $this->resetReportResults();
+
+        if ($this->reportType !== 'trazabilidad_documental') {
+            $this->clientId = '';
+        }
+    }
+
+    public function updatedUen(): void
+    {
+        $this->resetReportResults();
+
+        if ($this->reportType === 'trazabilidad_documental') {
+            $this->clientId = '';
+        }
+    }
+
+    private function resetReportResults(): void
+    {
+        $this->rows = null;
+        $this->columns = [];
+        $this->summary = ['total_rows' => 0, 'total_amount' => 0];
+    }
+
     /**
      * @return array{0: string, 1: string}|null
      */
@@ -117,6 +169,15 @@ class ReportsPage extends Page
             return;
         }
 
+        if ($this->reportType === 'trazabilidad_documental' && ! $this->clientId) {
+            Notification::make()
+                ->title('Selecciona un cliente')
+                ->body('La trazabilidad se genera bajo demanda para un cliente específico.')
+                ->warning()
+                ->send();
+            return;
+        }
+
         [$this->columns, $this->rows, $this->summary] = match ($this->reportType) {
             'cartera_regional'     => $this->reportCarteraRegional(),
             'cartera_canal'        => $this->reportCarteraCanal(),
@@ -126,6 +187,7 @@ class ReportsPage extends Page
             'gestiones_gestor'     => $this->reportGestionesGestor(),
             'acta_compromisos'     => $this->reportActaCompromisos(),
             'analisis_vencimiento' => $this->reportAnalisisVencimiento(),
+            'trazabilidad_documental' => $this->reportTrazabilidadDocumental(),
             default                => [[], [], ['total_rows' => 0, 'total_amount' => 0]],
         };
     }
@@ -481,5 +543,79 @@ class ReportsPage extends Page
         }
 
         return [$columns, $rows, ['total_rows' => array_sum(array_column($rows, 'documentos')), 'total_amount' => $grandTotal]];
+    }
+
+    private function reportTrazabilidadDocumental(): array
+    {
+        $load = DB::table('portfolio_loads')
+            ->where('is_active', true)
+            ->where('status', 'completed')
+            ->orderByDesc('period_date')
+            ->orderByDesc('version')
+            ->first(['id', 'period_date']);
+
+        if (! $load) {
+            return [[], [], ['total_rows' => 0, 'total_amount' => 0]];
+        }
+
+        $documents = PortfolioDocument::query()
+            ->where('client_id', (int) $this->clientId)
+            ->where('portfolio_load_id', (int) $load->id)
+            ->whereIn('status', PortfolioDocument::BALANCE_STATUSES)
+            ->whereNull('deleted_at');
+
+        if ($load->period_date) {
+            $documents->whereDate('period_date', $load->period_date);
+        }
+
+        $typeLabels = [
+            'generacion'  => 'Generación',
+            'vencimiento' => 'Vencimiento',
+            'nc'          => 'Nota crédito',
+            'recaudo'     => 'Recaudo',
+            'corte'       => 'Corte cartera',
+        ];
+
+        $rows = app(DocumentTraceabilityService::class)
+            ->clientDocumentRows((int) $this->clientId, $documents);
+
+        $rows = array_map(static function (array $row) use ($typeLabels): object {
+            $lastEvent = $row['last_event'] ?? null;
+            $lastDate = $row['last_event_date'] ?? null;
+            $lastType = $typeLabels[$row['last_event_type'] ?? ''] ?? null;
+
+            return (object) [
+                'document_number' => $row['document_number'] ?: '—',
+                'document_type'   => $row['document_type'] ?: '—',
+                'issue_date'      => $row['issue_date'] ?: '—',
+                'original'        => (float) $row['original'],
+                'nc_total'        => (float) $row['nc_total'],
+                'collected'       => (float) $row['collected'],
+                'pending'         => (float) $row['pending'],
+                'last_event'      => $lastEvent
+                    ? trim(implode(' · ', array_filter([$lastType, $lastEvent, $lastDate])))
+                    : '—',
+            ];
+        }, $rows);
+
+        $columns = [
+            ['key' => 'document_number', 'label' => 'Documento', 'format' => 'text'],
+            ['key' => 'document_type',   'label' => 'Tipo', 'format' => 'text'],
+            ['key' => 'issue_date',      'label' => 'Emisión', 'format' => 'text'],
+            ['key' => 'original',        'label' => 'Valor original', 'format' => 'money'],
+            ['key' => 'nc_total',        'label' => 'NC aplicadas', 'format' => 'money'],
+            ['key' => 'collected',       'label' => 'Recaudado', 'format' => 'money'],
+            ['key' => 'pending',         'label' => 'Saldo pendiente', 'format' => 'money'],
+            ['key' => 'last_event',      'label' => 'Último evento', 'format' => 'text'],
+        ];
+
+        return [
+            $columns,
+            $rows,
+            [
+                'total_rows' => count($rows),
+                'total_amount' => array_sum(array_column($rows, 'pending')),
+            ],
+        ];
     }
 }

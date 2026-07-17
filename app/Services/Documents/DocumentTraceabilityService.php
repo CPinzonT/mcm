@@ -175,29 +175,187 @@ class DocumentTraceabilityService
   public function clientDocumentRows(int $clientId, Builder $documentsQuery): array
   {
     $documents = (clone $documentsQuery)
+      ->with('portfolioLoad:id,reference')
       ->orderByDesc('issue_date')
       ->orderByDesc('id')
       ->limit(100)
       ->get();
 
-    return $documents->map(function (PortfolioDocument $document) {
-      $summary  = $this->documentFinancialSummary($document);
-      $timeline = $this->documentTimeline($document);
-      $last     = $timeline !== [] ? $timeline[array_key_last($timeline)] : null;
+    if ($documents->isEmpty()) {
+      return [];
+    }
+
+    $documentsById = $documents->keyBy('id');
+    $documentIdsByNumber = [];
+    $documentIdsByReference = [];
+    $invoiceByReference = [];
+
+    foreach ($documents as $document) {
+      $number = trim((string) $document->document_number);
+      $reference = trim((string) $document->client_reference);
+
+      if ($number !== '') {
+        $documentIdsByNumber[$number][] = (int) $document->id;
+        $documentIdsByReference[$number][] = (int) $document->id;
+      }
+      if ($reference !== '') {
+        $documentIdsByReference[$reference][] = (int) $document->id;
+      }
+
+      if (! $this->isCreditNote($document->document_type)) {
+        foreach (array_filter([$number, $reference]) as $key) {
+          $invoiceByReference[$key] ??= $document;
+        }
+      }
+    }
+
+    $creditNotesByDocument = [];
+    $references = array_keys($documentIdsByReference);
+
+    if ($references !== []) {
+      $creditNoteQuery = PortfolioDocument::query()
+        ->where('client_id', $clientId)
+        ->whereNull('deleted_at')
+        ->where(function ($query) use ($references): void {
+          $query->whereIn('client_reference', $references)
+            ->orWhereIn('document_number', $references);
+        });
+
+      $this->applyCreditNoteTypeScope($creditNoteQuery);
+
+      foreach ($creditNoteQuery->get() as $creditNote) {
+        $noteReferences = array_unique(array_filter([
+          trim((string) $creditNote->client_reference),
+          trim((string) $creditNote->document_number),
+        ]));
+
+        foreach ($noteReferences as $reference) {
+          foreach ($documentIdsByReference[$reference] ?? [] as $documentId) {
+            $target = $documentsById->get($documentId);
+            if (! $target || $target->id === $creditNote->id || $this->isCreditNote($target->document_type)) {
+              continue;
+            }
+
+            $creditNotesByDocument[$documentId][$creditNote->id] = $creditNote;
+          }
+        }
+      }
+    }
+
+    $paymentsByDocument = [];
+    $documentIds = $documents->pluck('id')->map(fn ($id) => (int) $id)->all();
+    $documentNumbers = array_keys($documentIdsByNumber);
+
+    $paymentQuery = CollectionDetail::query()
+      ->whereHas('collectionLoad', fn ($query) => $query->where('status', 'completed'))
+      ->where(function ($query) use ($documentIds, $documentNumbers): void {
+        $query->whereIn('portfolio_document_id', $documentIds);
+        if ($documentNumbers !== []) {
+          $query->orWhereIn('document_number', $documentNumbers);
+        }
+      })
+      ->orderBy('payment_date')
+      ->orderBy('id');
+
+    foreach ($paymentQuery->get() as $payment) {
+      $targetIds = [];
+
+      if ($payment->portfolio_document_id && $documentsById->has((int) $payment->portfolio_document_id)) {
+        $targetIds[] = (int) $payment->portfolio_document_id;
+      }
+
+      $paymentDocumentNumber = trim((string) $payment->document_number);
+      if ($paymentDocumentNumber !== '') {
+        $targetIds = array_merge($targetIds, $documentIdsByNumber[$paymentDocumentNumber] ?? []);
+      }
+
+      foreach (array_unique($targetIds) as $documentId) {
+        $paymentsByDocument[$documentId][$payment->id] = $payment;
+      }
+    }
+
+    return $documents->map(function (PortfolioDocument $document) use (
+      $creditNotesByDocument,
+      $paymentsByDocument,
+      $invoiceByReference,
+    ) {
+      $creditNotes = collect($creditNotesByDocument[$document->id] ?? []);
+      $payments = collect($paymentsByDocument[$document->id] ?? []);
+      $isCreditNote = $this->isCreditNote($document->document_type);
+
+      $events = [];
+      $addEvent = static function ($date, string $type, string $title) use (&$events): void {
+        if (! $date) {
+          return;
+        }
+
+        $carbon = Carbon::parse($date);
+        $events[] = [
+          'sort_date' => $carbon->format('Y-m-d H:i:s'),
+          'type' => $type,
+          'title' => $title,
+          'date_label' => $carbon->format('d/m/Y'),
+        ];
+      };
+
+      $addEvent($document->issue_date, 'generacion', $isCreditNote ? 'Nota crédito registrada' : 'Documento generado');
+      $addEvent($document->due_date, 'vencimiento', 'Fecha de vencimiento');
+
+      if ($isCreditNote) {
+        $reference = trim((string) $document->client_reference);
+        if ($reference !== '' && isset($invoiceByReference[$reference])) {
+          $addEvent($document->issue_date ?? $document->due_date, 'nc', 'Vinculada a factura');
+        }
+      } else {
+        foreach ($creditNotes as $creditNote) {
+          $addEvent(
+            $creditNote->issue_date ?? $creditNote->due_date ?? $document->issue_date,
+            'nc',
+            'Nota crédito aplicada',
+          );
+        }
+      }
+
+      foreach ($payments as $payment) {
+        $addEvent(
+          $payment->payment_date ?? $payment->period_date ?? $payment->created_at,
+          'recaudo',
+          'Recaudo' . ($payment->reconciliation_status
+            ? ' · ' . str_replace('_', ' ', $payment->reconciliation_status)
+            : ''),
+        );
+      }
+
+      $addEvent($document->period_date, 'corte', 'Corte de cartera activo');
+
+      usort($events, function (array $a, array $b): int {
+        $dateComparison = strcmp($a['sort_date'], $b['sort_date']);
+        if ($dateComparison !== 0) {
+          return $dateComparison;
+        }
+
+        return (self::TYPE_SORT[$a['type']] ?? 99) <=> (self::TYPE_SORT[$b['type']] ?? 99);
+      });
+
+      $last = $events !== [] ? $events[array_key_last($events)] : null;
+      $collected = $payments->sum(fn (CollectionDetail $payment) => (float) $payment->amount);
+      $ncTotal = $isCreditNote
+        ? 0.0
+        : $creditNotes->sum(fn (PortfolioDocument $creditNote) => abs((float) $creditNote->original_amount));
 
       return [
         'id'              => $document->id,
         'document_number' => $document->document_number,
         'document_type'   => $document->document_type,
         'issue_date'      => $document->issue_date?->format('d/m/y'),
-        'original'        => (float) $summary['original'],
-        'nc_total'        => (float) $summary['nc_total'],
-        'collected'       => (float) $summary['collected'],
-        'pending'         => (float) $summary['pending'],
+        'original'        => (float) $document->original_amount,
+        'nc_total'        => (float) $ncTotal,
+        'collected'       => (float) $collected,
+        'pending'         => (float) $document->pending_amount,
         'last_event'      => $last['title'] ?? null,
         'last_event_date' => $last['date_label'] ?? null,
         'last_event_type' => $last['type'] ?? null,
-        'is_credit_note'  => $this->isCreditNote($document->document_type),
+        'is_credit_note'  => $isCreditNote,
       ];
     })->all();
   }

@@ -345,19 +345,6 @@
     scrollbar-width: thin;
 }
 
-.client-view .cv-trace-last {
-    font-size: .72rem;
-    color: var(--mcm-muted);
-}
-.client-view .cv-trace-last strong {
-    color: var(--mcm-text);
-    font-weight: 600;
-}
-.client-view .cv-trace-nc { color: var(--mcm-amber); }
-.client-view .cv-trace-collected { color: var(--mcm-green); }
-.client-view .cv-trace-pending { color: var(--mcm-text-strong); font-weight: 700; }
-.client-view .cv-trace-pending.is-zero { color: var(--mcm-green); }
-
 /* Paginación documentos — Los SVG de Tailwind/Laravel sin tamaño fijo heredan reglas de .mcm-modern-page y se ven gigantes */
 .client-view .cv-docs-pagination {
     align-items: center;
@@ -894,115 +881,6 @@
         @if($docs->hasPages())
         <div class="cv-docs-pagination" wire:key="docs-pagination-{{ $docs->currentPage() }}">
             {{ $docs->links('pagination::simple-tailwind') }}
-        </div>
-        @endif
-    </div>
-
-    {{-- ── Document traceability summary ── --}}
-    @php
-        $traceRows = $this->documentTraceRows;
-        $traceTypeLabels = [
-            'generacion'  => 'Generación',
-            'vencimiento' => 'Vencimiento',
-            'nc'          => 'NC',
-            'recaudo'     => 'Recaudo',
-            'corte'       => 'Corte',
-        ];
-    @endphp
-    <div class="cv-card mcm-reveal">
-        <div class="cv-card-head">
-            <span class="cv-card-icon"><x-heroicon-o-arrow-path /></span>
-            <span class="cv-card-title">Trazabilidad documental</span>
-            <span class="badge-pill badge-gray">{{ count($traceRows) }} documento(s)</span>
-        </div>
-        <div class="cv-table-wrap">
-            <table class="data-table" style="width:100%;">
-                <thead>
-                    <tr>
-                        <th>Documento</th>
-                        <th>Tipo</th>
-                        <th>Emisión</th>
-                        <th style="text-align:right;">Original</th>
-                        <th style="text-align:right;">NC</th>
-                        <th style="text-align:right;">Recaudo</th>
-                        <th style="text-align:right;">Pendiente</th>
-                        <th>Último evento</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($traceRows as $row)
-                    <tr>
-                        <td style="font-family:ui-monospace,'Courier New',monospace;font-size:.77rem;font-weight:700;">
-                            <a href="{{ \App\Filament\Resources\PortfolioDocumentResource::getUrl('view', ['record' => $row['id']]) }}"
-                               class="cv-doc-link"
-                               title="Ver trazabilidad del documento">
-                                {{ $row['document_number'] }}
-                            </a>
-                        </td>
-                        <td style="color:var(--mcm-muted);font-size:.78rem;">{{ $row['document_type'] ?? '—' }}</td>
-                        <td style="color:var(--mcm-muted);font-size:.78rem;">{{ $row['issue_date'] ?? '—' }}</td>
-                        <td style="text-align:right;font-family:ui-monospace,'Courier New',monospace;font-size:.78rem;font-weight:600;">
-                            @if($row['is_credit_note'])
-                                <span class="cv-trace-nc">−${{ number_format(abs($row['original']), 0, ',', '.') }}</span>
-                            @else
-                                ${{ number_format($row['original'], 0, ',', '.') }}
-                            @endif
-                        </td>
-                        <td style="text-align:right;font-family:ui-monospace,'Courier New',monospace;font-size:.78rem;">
-                            @if($row['nc_total'] > 0)
-                                <span class="cv-trace-nc">−${{ number_format($row['nc_total'], 0, ',', '.') }}</span>
-                            @else
-                                —
-                            @endif
-                        </td>
-                        <td style="text-align:right;font-family:ui-monospace,'Courier New',monospace;font-size:.78rem;" class="cv-trace-collected">
-                            @if($row['collected'] > 0)
-                                ${{ number_format($row['collected'], 0, ',', '.') }}
-                            @else
-                                —
-                            @endif
-                        </td>
-                        <td style="text-align:right;font-family:ui-monospace,'Courier New',monospace;font-size:.78rem;">
-                            <span class="cv-trace-pending {{ $row['pending'] <= 0 ? 'is-zero' : '' }}">
-                                @if($row['is_credit_note'] && $row['pending'] <= 0)
-                                    Aplicada
-                                @else
-                                    ${{ number_format($row['pending'], 0, ',', '.') }}
-                                @endif
-                            </span>
-                        </td>
-                        <td>
-                            @if($row['last_event'])
-                            <span class="cv-trace-last">
-                                <span class="badge-pill badge-gray" style="font-size:.65rem;margin-right:.25rem;">
-                                    {{ $traceTypeLabels[$row['last_event_type']] ?? $row['last_event_type'] }}
-                                </span>
-                                <strong>{{ $row['last_event'] }}</strong>
-                                @if($row['last_event_date'])
-                                    <span style="opacity:.75;">· {{ $row['last_event_date'] }}</span>
-                                @endif
-                            </span>
-                            @else
-                            <span style="color:var(--mcm-muted);font-size:.78rem;">—</span>
-                            @endif
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="8">
-                            <div class="cv-empty">
-                                <x-heroicon-o-arrow-path />
-                                <p>Sin documentos para mostrar trazabilidad.</p>
-                            </div>
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
-        @if(count($traceRows) >= 100)
-        <div style="padding:.65rem 1.2rem;border-top:1px solid var(--mcm-border);font-size:.72rem;color:var(--mcm-muted);">
-            Mostrando los 100 documentos más recientes. Use la ficha de cada documento para el detalle completo.
         </div>
         @endif
     </div>

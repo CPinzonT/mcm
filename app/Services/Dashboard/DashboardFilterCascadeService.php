@@ -148,6 +148,20 @@ class DashboardFilterCascadeService
         return $out;
     }
 
+    public function advisorOptionsCount(DashboardFiltersData $filters, string $search = ''): int
+    {
+        $q = $this->baseQuery($filters, ['advisors'])
+            ->whereNotNull('pd.advisor_id')
+            ->whereNotNull('a.name')
+            ->where('a.name', '!=', '');
+
+        if ($search !== '') {
+            $q->where('a.name', 'like', '%' . $search . '%');
+        }
+
+        return (int) $q->count(DB::raw('DISTINCT pd.advisor_id'));
+    }
+
     /**
      * @return array<int|string, string> id => nombre
      */

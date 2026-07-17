@@ -291,16 +291,22 @@ class ChartService
 
     public function pareto(DashboardFiltersData $filters): array
     {
-        $rows = $this->baseActiveQuery($filters)
+        $base = $this->baseActiveQuery($filters);
+        $grand = (float) (clone $base)->sum('pd.pending_amount');
+
+        $rows = (clone $base)
             ->select('pd.client_id', 'c.name as client_name', DB::raw('SUM(pd.pending_amount) as total'))
             ->groupBy('pd.client_id', 'c.name')
             ->orderByDesc('total')
             ->limit(10)
             ->get();
 
-        $grand   = (float) $rows->sum('total');
         $labels  = $rows->pluck('client_name')->toArray();
         $totals  = $rows->pluck('total')->map(fn ($v) => (float) $v)->toArray();
+        $pcts = array_map(
+            static fn ($value) => $grand > 0 ? round((float) $value / $grand * 100, 1) : 0.0,
+            $totals,
+        );
 
         $accumulated = 0;
         $cumPcts = array_map(function ($v) use ($grand, &$accumulated) {
@@ -314,6 +320,7 @@ class ChartService
         return [
             'labels'     => $labels,
             'client_ids' => $clientIds,
+            'pcts'       => $pcts,
             'datasets'   => [
                 [
                     'type'            => 'bar',

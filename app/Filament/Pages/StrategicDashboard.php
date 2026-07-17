@@ -133,6 +133,13 @@ class StrategicDashboard extends Page
     }
 
     #[Computed]
+    public function advisorOptionsCount(): int
+    {
+        return app(DashboardFilterCascadeService::class)
+            ->advisorOptionsCount($this->dashboardFiltersData(), $this->advisorSearch);
+    }
+
+    #[Computed]
     public function documentTypeOptions(): array
     {
         return app(DashboardFilterCascadeService::class)
@@ -258,6 +265,7 @@ class StrategicDashboard extends Page
             $this->channelOptions,
             $this->regionalOptions,
             $this->advisorOptions,
+            $this->advisorOptionsCount,
             $this->documentTypeOptions,
             $this->accountingMonthOptions,
             $this->accountingMonthOptionsShort,
@@ -532,7 +540,7 @@ class StrategicDashboard extends Page
 
     public function updatedAdvisorSearch(): void
     {
-        unset($this->advisorOptions);
+        unset($this->advisorOptions, $this->advisorOptionsCount);
     }
 
     /**

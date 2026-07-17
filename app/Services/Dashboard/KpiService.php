@@ -3,6 +3,7 @@
 namespace App\Services\Dashboard;
 
 use App\Data\DashboardFiltersData;
+use App\Services\Clients\ClientSalesRotationService;
 use App\Services\Dashboard\Concerns\AppliesCollectionPaymentDateScope;
 use App\Services\Dashboard\Concerns\AppliesLatestCollectionLoad;
 use App\Services\Dashboard\Concerns\AppliesOperativePortfolioDocuments;
@@ -20,9 +21,9 @@ use Illuminate\Support\Facades\DB;
  *
  * KPI 3 - ISM: buckets por días de mora vivos (vencimiento → fecha de consulta) ponderados / cartera_total.
  *
- * KPI 4 - Rotación: (cartera_total / recaudo_período) * 30
- *   Representa cuántos días tarda en rotar la cartera a ritmo de recaudo actual.
- *   Si recaudo = 0, retorna null (estado vacío, no cero).
+ * KPI 4 - Rotación: (cartera_total / ventas_últimos_12_meses) * 360.
+ *   Usa la misma fórmula de la ficha cliente, agregada a los clientes que
+ *   participan en la cartera filtrada. Si ventas = 0, retorna null.
  *
  * KPI 8 - Recaudo: última carga de recaudo activa, pagos del corte del mes de la
  *   cartera activa (independiente del filtro Desde/Hasta del tablero).
@@ -120,10 +121,10 @@ class KpiService
             || ! empty($filters->dateFrom)
             || ! empty($filters->dateTo);
 
-        // ── KPI 4: Rotación (mismo corte de mes que recaudo) ───────────────
-        $rotation = ($hasRecaudoData && $portfolioForRecaudo > 0)
-            ? round(($portfolioForRecaudo / $recaudoPeriod) * 30, 1)
-            : null;
+        // ── KPI 4: Rotación — misma fórmula de ficha cliente ───────────────
+        $sales12Months = $this->salesLast12MonthsForPortfolio($filters, $balanceBase);
+        $rotation = app(ClientSalesRotationService::class)
+            ->rotationDaysFromSales($portfolioTotal, $sales12Months);
 
         // ── KPI 9: % Recuperación del corte del mes ───────────────────────
         $recoveryRate = ($hasRecaudoData && $portfolioForRecaudo > 0)
@@ -195,6 +196,8 @@ class KpiService
             'overdue_rate'      => $overdueRate,
             'ism'               => $ismValue,
             'rotation'          => $rotation,
+            'sales_12_months'   => $sales12Months,
+            'sales_period_label' => $this->salesPeriodLabel($filters),
             'conc_top5'         => $concTop5,
             'top_client'        => [
                 'name'   => $topClient?->client_name ?? null,
@@ -224,6 +227,81 @@ class KpiService
             'has_recaudo_data'  => $hasRecaudoData,
             'period_selected'   => $periodSelected,
         ];
+    }
+
+    /**
+     * Ventas de los 12 meses anteriores a la fecha de consulta para los
+     * clientes presentes en la cartera filtrada.
+     */
+    private function salesLast12MonthsForPortfolio(
+        DashboardFiltersData $filters,
+        \Illuminate\Database\Query\Builder $balanceBase,
+    ): float {
+        $clientIds = (clone $balanceBase)
+            ->whereNotNull('pd.client_id')
+            ->distinct()
+            ->pluck('pd.client_id')
+            ->map(static fn ($id) => (int) $id)
+            ->all();
+
+        if ($clientIds === []) {
+            return 0.0;
+        }
+
+        $clientIdentities = DB::table('clients')
+            ->whereIn('id', $clientIds)
+            ->get(['code', 'document_number']);
+        $clientCodes = $clientIdentities
+            ->pluck('code')
+            ->map(static fn ($value) => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $clientNits = $clientIdentities
+            ->pluck('document_number')
+            ->map(static fn ($value) => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $asOf = $this->salesAsOfDate($filters);
+        $from = $asOf->copy()->subMonths(12)->startOfDay();
+
+        $salesQuery = DB::table('sales_rows as sr')
+            ->join('sales_loads as sl', 'sl.id', '=', 'sr.sales_load_id')
+            ->where('sl.status', 'completed')
+            ->whereBetween('sr.sale_date', [$from->toDateString(), $asOf->toDateString()])
+            ->where(function ($query) use ($clientIds, $clientCodes, $clientNits): void {
+                $query->whereIn('sr.client_id', $clientIds);
+
+                if ($clientCodes !== []) {
+                    $query->orWhereIn('sr.client_code', $clientCodes);
+                }
+                if ($clientNits !== []) {
+                    $query->orWhereIn('sr.client_nit', $clientNits);
+                }
+            });
+
+        return (float) $salesQuery->sum('sr.sale_amount');
+    }
+
+    private function salesAsOfDate(DashboardFiltersData $filters): \Carbon\Carbon
+    {
+        if ($filters->period) {
+            return \Carbon\Carbon::parse($filters->period . '-01')->endOfMonth();
+        }
+
+        return \Carbon\Carbon::parse($filters->consultationDate());
+    }
+
+    private function salesPeriodLabel(DashboardFiltersData $filters): string
+    {
+        $asOf = $this->salesAsOfDate($filters);
+        $from = $asOf->copy()->subMonths(12)->startOfDay();
+
+        return $from->format('d/m/Y') . ' – ' . $asOf->format('d/m/Y');
     }
 
     private function ismBucketSum($activeBase, DashboardFiltersData $filters, int $min, int $max): float

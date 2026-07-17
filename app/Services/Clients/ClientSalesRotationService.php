@@ -39,13 +39,14 @@ class ClientSalesRotationService
      */
     public function rotationDays(Client $client, float $portfolioBalance, ?CarbonImmutable $asOf = null): ?float
     {
-        if ($portfolioBalance <= 0) {
-            return null;
-        }
-
         $sales12Months = $this->salesLast12Months($client, $asOf);
 
-        if ($sales12Months <= 0) {
+        return $this->rotationDaysFromSales($portfolioBalance, $sales12Months);
+    }
+
+    public function rotationDaysFromSales(float $portfolioBalance, float $sales12Months): ?float
+    {
+        if ($portfolioBalance <= 0 || $sales12Months <= 0) {
             return null;
         }
 

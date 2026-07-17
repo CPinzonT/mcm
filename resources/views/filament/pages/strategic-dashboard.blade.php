@@ -171,6 +171,15 @@ body:has(.sd-page) .fi-page-content {
     color: var(--mcm-input-text, #1a202c); font-size: .8rem; outline: none;
     appearance: none; -webkit-appearance: none;
 }
+.sd-filter-input[type="date"] {
+    appearance: auto;
+    -webkit-appearance: auto;
+    color-scheme: light;
+}
+.sd-filter-input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: .8;
+}
 .sd-filter-input:focus { border-color: var(--mcm-accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--mcm-accent) 15%,transparent); }
 .sd-filter-actions {
     display: flex;
@@ -240,6 +249,36 @@ body:has(.sd-page) .fi-page-content {
 .sd-kpi-sub .c-green { color: var(--mcm-green) !important; }
 .sd-kpi-sub .c-amber { color: var(--mcm-amber) !important; }
 .sd-kpi-sub .c-red   { color: var(--mcm-red) !important; }
+.sd-kpi--collection-summary { grid-column: span 3; }
+.sd-collection-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .75rem;
+    margin-top: .35rem;
+}
+.sd-collection-item + .sd-collection-item {
+    border-left: 1px solid var(--mcm-border);
+    padding-left: .75rem;
+}
+.sd-collection-progress {
+    background: var(--mcm-surface-soft);
+    border-radius: 999px;
+    height: 4px;
+    margin-top: .4rem;
+    overflow: hidden;
+}
+.sd-collection-progress > span {
+    background: var(--mcm-green);
+    border-radius: inherit;
+    display: block;
+    height: 100%;
+}
+@media (max-width: 860px) { .sd-kpi--collection-summary { grid-column: span 3; } }
+@media (max-width: 600px) {
+    .sd-kpi--collection-summary { grid-column: span 2; }
+    .sd-collection-grid { grid-template-columns: 1fr; }
+    .sd-collection-item + .sd-collection-item { border-left: 0; border-top: 1px solid var(--mcm-border); padding-left: 0; padding-top: .55rem; }
+}
 
 /* ── Score ring ──────────────────────────────────────── */
 .sd-score-kpi {
@@ -249,6 +288,7 @@ body:has(.sd-page) .fi-page-content {
     display: flex; align-items: center; gap: .6rem;
 }
 .sd-score-kpi svg { flex-shrink: 0; }
+.sd-score-denominator { color: inherit; font-size: .68rem; font-weight: 700; opacity: .78; }
 
 .sd-checklist-section { min-width: 0; }
 .sd-filter-search:focus { border-color: var(--mcm-accent); }
@@ -379,7 +419,7 @@ body:has(.sd-page) .fi-page-content {
         <div class="sd-hdiv"></div>
         <div class="sd-hkpi" x-data="{ score: {{ $k['score'] }}, color: '{{ $k['score_color'] }}' }">
             <span class="sd-hkpi-val" :style="'color:' + ({'green':'var(--mcm-green)','amber':'var(--mcm-amber)','red':'var(--mcm-red)'}[color] ?? 'var(--mcm-muted)')">
-                {{ $k['score'] }}<span style="font-size:.6rem;font-weight:500;color:var(--mcm-muted)">/100</span>
+                {{ $k['score'] }}<span class="sd-score-denominator">/100</span>
             </span>
             <span class="sd-hkpi-label">Score Salud</span>
         </div>
@@ -559,10 +599,11 @@ body:has(.sd-page) .fi-page-content {
             <div class="sd-kpi-label">Rotación de Cartera</div>
             @if($k['rotation'] !== null)
                 <div class="sd-kpi-value {{ $rotClass }}">{{ number_format($k['rotation'], 1, ',', '.') }}d</div>
-                <div class="sd-kpi-sub">Días promedio de recuperación</div>
+                <div class="sd-kpi-sub">Cartera / ventas 12 meses × 360</div>
+                <div class="sd-kpi-sub">${{ number_format($k['sales_12_months'], 0, ',', '.') }} vendidos · {{ $k['sales_period_label'] }}</div>
             @else
-                <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin recaudo</div>
-                <div class="sd-kpi-sub">Sin carga de recaudo activa</div>
+                <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin ventas</div>
+                <div class="sd-kpi-sub">Sin ventas vinculadas en los últimos 12 meses</div>
             @endif
         </div>
 
@@ -588,60 +629,59 @@ body:has(.sd-page) .fi-page-content {
             <div class="sd-kpi-sub">% cartera vencida (saldo): <span class="{{ $ovClass }}">{{ number_format($k['overdue_rate'], 1, ',', '.') }}%</span> · pesa ${{ number_format($k['overdue_amount'], 0, ',', '.') }}</div>
         </div>
 
-        {{-- 8. Recaudo del Período --}}
-        <div class="sd-kpi">
-            <div class="sd-kpi-label">Recaudo</div>
-            @if(($k['has_recaudo_load'] ?? false) && $k['recaudo_period'] > 0)
-                <div class="sd-kpi-value c-blue">${{ number_format($k['recaudo_period'], 0, ',', '.') }}</div>
-                <div class="sd-kpi-sub">{{ $recaudoSub }}</div>
-            @elseif($k['has_recaudo_load'] ?? false)
-                <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">$0</div>
-                <div class="sd-kpi-sub">{{ $recaudoSub }} · sin filas en filtros</div>
-            @else
-                <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin datos</div>
-                <div class="sd-kpi-sub">Sin carga de recaudo activa</div>
-            @endif
-        </div>
-
-        {{-- 9. % Recuperación del Período --}}
-        <div class="sd-kpi">
-            <div class="sd-kpi-label">% Recuperación</div>
-            @if($k['recovery_rate'] !== null)
-                <div class="sd-kpi-value {{ $recClass }}">{{ number_format($k['recovery_rate'], 1, ',', '.') }}%</div>
-                <div class="sd-kpi-sub">Recaudo / Cartera · {{ $recaudoSub }}</div>
-            @elseif($k['has_recaudo_load'] ?? false)
-                <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">—</div>
-                <div class="sd-kpi-sub">{{ $recaudoSub }} · sin monto en filtros</div>
-            @else
-                <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin datos</div>
-                <div class="sd-kpi-sub">Sin carga de recaudo activa</div>
-            @endif
-        </div>
-
-        {{-- 10. Presupuesto de Recaudo --}}
-        <div class="sd-kpi">
-            <div class="sd-kpi-label">Presupuesto Recaudo</div>
-            @if($k['budget'] !== null)
-                <div class="sd-kpi-value">${{ number_format($k['budget'], 0, ',', '.') }}</div>
-                <div class="sd-kpi-sub">Meta configurada</div>
-            @else
-                <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin datos</div>
-                <div class="sd-kpi-sub">Sin datos del período</div>
-            @endif
-        </div>
-
-        {{-- 11. Recaudo vs Meta --}}
-        <div class="sd-kpi">
-            <div class="sd-kpi-label">Recaudo vs Meta</div>
-            @if($k['vs_meta_rate'] !== null)
-                <div class="sd-kpi-value {{ $k['vs_meta_rate'] >= 100 ? 'c-green' : ($k['vs_meta_rate'] >= 70 ? 'c-amber' : 'c-red') }}">
-                    {{ number_format($k['vs_meta_rate'], 1, ',', '.') }}%
+        {{-- 8–11. Presupuesto, recaudo, recuperación y cumplimiento --}}
+        <div class="sd-kpi sd-kpi--collection-summary">
+            <div class="sd-kpi-label">Presupuesto · Recaudado · Recuperación</div>
+            <div class="sd-collection-grid">
+                <div class="sd-collection-item">
+                    <div class="sd-kpi-sub">Presupuesto</div>
+                    @if($k['budget'] !== null)
+                        <div class="sd-kpi-value">${{ number_format($k['budget'], 0, ',', '.') }}</div>
+                        <div class="sd-kpi-sub">Meta configurada</div>
+                    @else
+                        <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin datos</div>
+                        <div class="sd-kpi-sub">Sin meta del período</div>
+                    @endif
                 </div>
-                <div class="sd-kpi-sub">Cumplimiento de presupuesto</div>
-            @else
-                <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin datos</div>
-                <div class="sd-kpi-sub">Sin datos del período</div>
-            @endif
+                <div class="sd-collection-item">
+                    <div class="sd-kpi-sub">Recaudado</div>
+                    @if(($k['has_recaudo_load'] ?? false) && $k['recaudo_period'] > 0)
+                        <div class="sd-kpi-value c-blue">${{ number_format($k['recaudo_period'], 0, ',', '.') }}</div>
+                        <div class="sd-kpi-sub">
+                            {{ $recaudoSub }}
+                            @if($k['vs_meta_rate'] !== null)
+                                · <span class="{{ $k['vs_meta_rate'] >= 100 ? 'c-green' : ($k['vs_meta_rate'] >= 70 ? 'c-amber' : 'c-red') }}">
+                                    {{ number_format($k['vs_meta_rate'], 1, ',', '.') }}% de meta
+                                </span>
+                            @endif
+                        </div>
+                        @if($k['vs_meta_rate'] !== null)
+                        <div class="sd-collection-progress" title="{{ number_format($k['vs_meta_rate'], 1, ',', '.') }}% de cumplimiento">
+                            <span style="width:{{ min(100, max(0, $k['vs_meta_rate'])) }}%"></span>
+                        </div>
+                        @endif
+                    @elseif($k['has_recaudo_load'] ?? false)
+                        <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">$0</div>
+                        <div class="sd-kpi-sub">{{ $recaudoSub }} · sin filas en filtros</div>
+                    @else
+                        <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin datos</div>
+                        <div class="sd-kpi-sub">Sin carga de recaudo activa</div>
+                    @endif
+                </div>
+                <div class="sd-collection-item">
+                    <div class="sd-kpi-sub">Recuperación</div>
+                    @if($k['recovery_rate'] !== null)
+                        <div class="sd-kpi-value {{ $recClass }}">{{ number_format($k['recovery_rate'], 1, ',', '.') }}%</div>
+                        <div class="sd-kpi-sub">Recaudo / cartera del corte</div>
+                    @elseif($k['has_recaudo_load'] ?? false)
+                        <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">—</div>
+                        <div class="sd-kpi-sub">Sin monto en filtros</div>
+                    @else
+                        <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin datos</div>
+                        <div class="sd-kpi-sub">Sin carga de recaudo activa</div>
+                    @endif
+                </div>
+            </div>
         </div>
 
         {{-- 12. % Saldo Negativo --}}
@@ -764,13 +804,27 @@ body:has(.sd-page) .fi-page-content {
 
         {{-- Asesor --}}
         <div class="sd-filter-card sd-checklist-section sd-filt-asesor">
+            @php
+                $advisorShown = count($this->advisorOptions);
+                $advisorTotal = $this->advisorOptionsCount;
+            @endphp
             <div class="sd-checklist-title">
                 Asesor
+                <span style="font-size:.6rem;color:var(--mcm-accent);font-weight:700;margin-left:.3rem;">
+                    ({{ number_format($advisorTotal, 0, ',', '.') }})
+                </span>
                 @if(count($this->selectedAdvisors) > 0)
-                    <span style="font-size:.6rem;color:var(--mcm-accent);font-weight:700;margin-left:.3rem;">({{ count($this->selectedAdvisors) }})</span>
+                    <span style="font-size:.6rem;color:var(--mcm-green);font-weight:700;margin-left:.3rem;">· {{ count($this->selectedAdvisors) }} seleccionado(s)</span>
                 @endif
             </div>
             <input type="text" wire:model.live.debounce.300ms="advisorSearch" class="sd-filter-search" placeholder="Buscar asesor...">
+            @if($advisorTotal > $advisorShown)
+            <p class="sd-client-filter-hint">
+                Mostrando {{ number_format($advisorShown, 0, ',', '.') }} de {{ number_format($advisorTotal, 0, ',', '.') }} asesores. Refine la búsqueda para acotar la lista.
+            </p>
+            @elseif(trim($this->advisorSearch) !== '' && $advisorTotal === 0)
+            <p class="sd-client-filter-hint">Sin asesores que coincidan con la búsqueda.</p>
+            @endif
             <div class="sd-checklist-items">
                 @foreach($this->advisorOptions as $id => $name)
                 @php $advId = (int) $id; @endphp
@@ -1283,13 +1337,22 @@ document.addEventListener('alpine:init', () => {
             if (data.pareto?.datasets?.[0]) {
                 const raw = JSON.parse(JSON.stringify(data.pareto));
                 const clientIds = raw.client_ids || [];
+                const sharePcts = raw.pcts || [];
                 const d = { labels: raw.labels, datasets: raw.datasets };
                 d.datasets[0].backgroundColor = mc.blue;
                 d.datasets[0].borderWidth = 0;
                 if (d.datasets[1]) { d.datasets[1].borderColor = mc.amber; d.datasets[1].pointBackgroundColor = mc.amber; d.datasets[1].backgroundColor = 'rgba(245,158,11,.07)'; d.datasets[1].tension = 0.3; d.datasets[1].borderWidth = 2; }
                 const self = this;
                 if (self._hasDatalabels) {
-                    d.datasets[0].datalabels = Object.assign(self.moneyDatalabels(t), { font: { size: 8, weight: '700' } });
+                    d.datasets[0].datalabels = {
+                        clip: false,
+                        anchor: 'end',
+                        align: 'top',
+                        offset: 3,
+                        color: t.text,
+                        font: { size: 8, weight: '700' },
+                        formatter: (_value, ctx) => Number(sharePcts[ctx.dataIndex] || 0).toFixed(1) + '%',
+                    };
                     if (d.datasets[1]) {
                         d.datasets[1].datalabels = {
                             clip: false,
@@ -1316,7 +1379,16 @@ document.addEventListener('alpine:init', () => {
                                 const cid = clientIds[el.index];
                                 if (cid) self.lwCall('filterFromChart', 'pareto', String(cid));
                             },
-                            plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, color: t.text, font: { size: 10 } } } },
+                            plugins: {
+                                legend: { display: true, position: 'bottom', labels: { boxWidth: 10, color: t.text, font: { size: 10 } } },
+                                tooltip: {
+                                    callbacks: {
+                                        label: (ctx) => ctx.datasetIndex === 0
+                                            ? `${ctx.dataset.label}: ${self.fmtShortMoney(ctx.raw)} (${Number(sharePcts[ctx.dataIndex] || 0).toFixed(1)}%)`
+                                            : `${ctx.dataset.label}: ${Number(ctx.raw).toFixed(1)}%`,
+                                    },
+                                },
+                            },
                             scales: {
                                 x:  { grid: { display: false }, ticks: { color: t.text, font: { size: 9 }, maxRotation: 25 } },
                                 y:  { position: 'left',  grid: { color: t.grid }, ticks: { color: t.text, callback: v => self.fmtShortMoney(v), font: { size: 10 } }, grace: '15%' },

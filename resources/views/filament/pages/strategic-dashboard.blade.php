@@ -249,6 +249,74 @@ body:has(.sd-page) .fi-page-content {
 .sd-kpi-sub .c-green { color: var(--mcm-green) !important; }
 .sd-kpi-sub .c-amber { color: var(--mcm-amber) !important; }
 .sd-kpi-sub .c-red   { color: var(--mcm-red) !important; }
+.sd-kpi-drill-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    margin-top: .55rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--mcm-accent);
+    font-size: .68rem;
+    font-weight: 800;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.sd-kpi-drill-link:hover { color: var(--mcm-accent-strong); }
+.sd-kpi-drill-link:disabled { opacity: .55; cursor: wait; }
+.sd-kpi-drilldown {
+    background: var(--mcm-surface);
+    border: 1px solid var(--mcm-border);
+    border-radius: 12px;
+    box-shadow: var(--mcm-shadow-soft);
+    overflow: hidden;
+}
+.sd-kpi-drilldown-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: .85rem 1rem;
+    border-bottom: 1px solid var(--mcm-border);
+}
+.sd-kpi-drilldown-title { color: var(--mcm-text-strong); font-size: .88rem; font-weight: 800; }
+.sd-kpi-drilldown-summary { color: var(--mcm-muted); font-size: .68rem; margin-top: .2rem; }
+.sd-kpi-drilldown-close {
+    border: 1px solid var(--mcm-border);
+    border-radius: 6px;
+    background: var(--mcm-surface-soft);
+    color: var(--mcm-text);
+    padding: .25rem .5rem;
+    font-size: .68rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.sd-kpi-drilldown-table-wrap { max-height: 28rem; overflow: auto; }
+.sd-kpi-drilldown-table { width: 100%; border-collapse: collapse; font-size: .7rem; }
+.sd-kpi-drilldown-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--mcm-surface-soft);
+    color: var(--mcm-muted);
+    padding: .55rem .7rem;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: .035em;
+    white-space: nowrap;
+}
+.sd-kpi-drilldown-table td {
+    color: var(--mcm-text);
+    padding: .5rem .7rem;
+    border-top: 1px solid var(--mcm-border);
+    vertical-align: middle;
+}
+.sd-kpi-drilldown-table tbody tr:hover { background: var(--mcm-accent-soft); }
+.sd-kpi-drilldown-table .is-number { text-align: right; white-space: nowrap; }
+.sd-kpi-client-link { color: var(--mcm-accent); font-weight: 800; text-decoration: none; }
+.sd-kpi-client-link:hover { text-decoration: underline; }
 .sd-kpi--collection-summary { grid-column: span 3; }
 .sd-collection-grid {
     display: grid;
@@ -585,6 +653,15 @@ body:has(.sd-page) .fi-page-content {
             <div class="sd-kpi-label">% Cartera Crítica (&gt;90d)</div>
             <div class="sd-kpi-value {{ $critClass }}">{{ number_format($k['critical_rate'], 1, ',', '.') }}%</div>
             <div class="sd-kpi-sub">${{ number_format($k['critical_amount'], 0, ',', '.') }}</div>
+            <button
+                type="button"
+                class="sd-kpi-drill-link"
+                wire:click="openKpiDrilldown('critical')"
+                wire:loading.attr="disabled"
+                wire:target="openKpiDrilldown"
+            >
+                Ver detalle por cliente →
+            </button>
         </div>
 
         {{-- 3. Índice Severidad Mora (ratio, no %) --}}
@@ -627,6 +704,15 @@ body:has(.sd-page) .fi-page-content {
             <div class="sd-kpi-value {{ $ovDocClass }}">{{ number_format($k['overdue_doc_rate'], 1, ',', '.') }}%</div>
             <div class="sd-kpi-sub">{{ number_format($k['overdue_docs']) }} / {{ number_format($k['total_docs']) }} docs con días de mora</div>
             <div class="sd-kpi-sub">% cartera vencida (saldo): <span class="{{ $ovClass }}">{{ number_format($k['overdue_rate'], 1, ',', '.') }}%</span> · pesa ${{ number_format($k['overdue_amount'], 0, ',', '.') }}</div>
+            <button
+                type="button"
+                class="sd-kpi-drill-link"
+                wire:click="openKpiDrilldown('overdue_documents')"
+                wire:loading.attr="disabled"
+                wire:target="openKpiDrilldown"
+            >
+                Ver detalle por cliente →
+            </button>
         </div>
 
         {{-- 8–11. Presupuesto, recaudo, recuperación y cumplimiento --}}
@@ -705,9 +791,98 @@ body:has(.sd-page) .fi-page-content {
                     @endforeach
                 </div>
             @endif
+            <button
+                type="button"
+                class="sd-kpi-drill-link"
+                wire:click="openKpiDrilldown('negative')"
+                wire:loading.attr="disabled"
+                wire:target="openKpiDrilldown"
+            >
+                Ver detalle por cliente →
+            </button>
         </div>
 
     </div>
+
+    @if($kpiDrilldownData !== null)
+        @php($drill = $kpiDrilldownData)
+        <div
+            class="sd-kpi-drilldown"
+            x-data
+            x-init="$nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'start' }))"
+            wire:key="kpi-drilldown-{{ $drill['type'] }}"
+        >
+            <div class="sd-kpi-drilldown-head">
+                <div>
+                    <div class="sd-kpi-drilldown-title">{{ $drill['title'] }}</div>
+                    <div class="sd-kpi-drilldown-summary">
+                        {{ number_format($drill['total_clients'], 0, ',', '.') }} clientes ·
+                        {{ number_format($drill['total_documents'], 0, ',', '.') }} documentos ·
+                        ${{ number_format($drill['total_amount'], 0, ',', '.') }}
+                        · según los filtros activos
+                    </div>
+                </div>
+                <button type="button" class="sd-kpi-drilldown-close" wire:click="closeKpiDrilldown">
+                    Cerrar
+                </button>
+            </div>
+
+            @if($drill['rows'] === [])
+                <div class="sd-kpi-drilldown-summary" style="padding:1rem;">
+                    No hay clientes que cumplan este indicador con los filtros actuales.
+                </div>
+            @else
+                <div class="sd-kpi-drilldown-table-wrap">
+                    <table class="sd-kpi-drilldown-table">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>NIT</th>
+                                <th>UEN / Canal</th>
+                                <th class="is-number">Documentos</th>
+                                <th class="is-number">{{ $drill['amount_label'] }}</th>
+                                @if($drill['type'] !== 'negative')
+                                    <th class="is-number">Mora máxima</th>
+                                @endif
+                                <th class="is-number">Participación</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($drill['rows'] as $row)
+                                <tr>
+                                    <td>
+                                        <a
+                                            class="sd-kpi-client-link"
+                                            href="{{ \App\Filament\Resources\ClientResource::getUrl('view', ['record' => $row['client_id']]) }}"
+                                        >
+                                            {{ $row['client'] ?: 'Cliente #' . $row['client_id'] }}
+                                        </a>
+                                    </td>
+                                    <td>{{ $row['nit'] ?: '—' }}</td>
+                                    <td>{{ $row['uen'] ?: '—' }} / {{ $row['channel'] ?: '—' }}</td>
+                                    <td class="is-number">{{ number_format($row['documents'], 0, ',', '.') }}</td>
+                                    <td class="is-number">${{ number_format($row['amount'], 0, ',', '.') }}</td>
+                                    @if($drill['type'] !== 'negative')
+                                        <td class="is-number">{{ number_format($row['max_days_overdue'], 0, ',', '.') }} días</td>
+                                    @endif
+                                    <td class="is-number">{{ number_format($row['share_pct'], 1, ',', '.') }}%</td>
+                                    <td>
+                                        <a
+                                            class="sd-kpi-client-link"
+                                            href="{{ \App\Filament\Resources\ClientResource::getUrl('view', ['record' => $row['client_id']]) }}"
+                                        >
+                                            Ver ficha
+                                        </a>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </div>
+    @endif
 
     {{-- ═══ RESULTADO COMPARACIÓN ══════════════════════════════ --}}
     @if($compareMode && $this->comparison !== null)

@@ -8,6 +8,7 @@ use App\Filament\Resources\ClientResource;
 use App\Filament\Resources\PortfolioDocumentResource;
 use App\Services\Dashboard\ChartService;
 use App\Services\Dashboard\DashboardFilterCascadeService;
+use App\Services\Dashboard\KpiClientDrilldownService;
 use App\Services\Dashboard\KpiService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
@@ -50,6 +51,12 @@ class StrategicDashboard extends Page
     public string $clientSearch = '';
 
     public string $advisorSearch = '';
+
+    // ── Detalle de KPI por cliente ─────────────────────────────
+    public ?string $kpiDrilldownType = null;
+
+    /** @var array<string, mixed>|null */
+    public ?array $kpiDrilldownData = null;
 
     // ── Comparación ─────────────────────────────────────────────
     public bool   $compareMode     = false;
@@ -272,7 +279,31 @@ class StrategicDashboard extends Page
             $this->accountingYearOptions,
             $this->activeDateRangeLabel,
         );
+        $this->refreshKpiDrilldown();
         $this->dispatch('charts-updated', charts: $this->charts);
+    }
+
+    public function openKpiDrilldown(string $type): void
+    {
+        $this->kpiDrilldownType = $type;
+        $this->refreshKpiDrilldown();
+        $this->dispatch('kpi-drilldown-opened');
+    }
+
+    public function closeKpiDrilldown(): void
+    {
+        $this->kpiDrilldownType = null;
+        $this->kpiDrilldownData = null;
+    }
+
+    private function refreshKpiDrilldown(): void
+    {
+        if ($this->kpiDrilldownType === null) {
+            return;
+        }
+
+        $this->kpiDrilldownData = app(KpiClientDrilldownService::class)
+            ->build($this->dashboardFiltersData(), $this->kpiDrilldownType);
     }
 
     public function resetFilters(): void

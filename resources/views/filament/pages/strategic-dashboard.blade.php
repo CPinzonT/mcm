@@ -805,7 +805,9 @@ body:has(.sd-page) .fi-page-content {
     </div>
 
     @if($kpiDrilldownData !== null)
-        @php($drill = $kpiDrilldownData)
+        @php
+            $drill = $kpiDrilldownData;
+        @endphp
         <div
             class="sd-kpi-drilldown"
             x-data

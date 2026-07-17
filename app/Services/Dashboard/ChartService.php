@@ -214,39 +214,75 @@ class ChartService
         return array_map(fn ($ym) => (float) ($rows[$ym]->total ?? 0), $yms);
     }
 
-    // ── 3/4. Cartera vencida por dimensión (UEN / Canal) ──────────────────
+    // ── 3/4. Cartera total apilada por dimensión (UEN / Canal) ─────────────
 
     public function byDimension(DashboardFiltersData $filters, string $column, string $label): array
     {
-        $q = $this->baseActiveQuery($filters)
+        $totalQuery = $this->baseActiveQuery($filters)
             ->whereNotNull($column)
             ->where($column, '!=', '');
-        $this->applyOperativeDocumentStatus($q);
-        $this->whereLiveDaysOverdue($q, '>', 0, $filters);
-        $rows = $q->select(DB::raw("{$column} as dim_value"), DB::raw('SUM(pd.pending_amount) as total'))
+        $this->applyPortfolioBalanceStatus($totalQuery);
+        $totalRows = $totalQuery
+            ->select(DB::raw("{$column} as dim_value"), DB::raw('SUM(pd.pending_amount) as total'))
             ->groupBy($column)
+            ->havingRaw('SUM(pd.pending_amount) > 0')
             ->orderByDesc('total')
             ->get();
 
-        $grand = (float) $rows->sum('total');
-        $top   = $rows->take(10);
+        $overdueQuery = $this->baseActiveQuery($filters)
+            ->whereNotNull($column)
+            ->where($column, '!=', '');
+        $this->applyOperativeDocumentStatus($overdueQuery);
+        $this->whereLiveDaysOverdue($overdueQuery, '>', 0, $filters);
+        $overdueByDimension = $overdueQuery
+            ->select(DB::raw("{$column} as dim_value"), DB::raw('SUM(pd.pending_amount) as total'))
+            ->groupBy($column)
+            ->get()
+            ->keyBy('dim_value');
 
+        $top = $totalRows->take(10);
         $labels = $top->pluck('dim_value')->map(fn ($v) => $v ?: 'Sin ' . $label)->toArray();
         $totals = $top->pluck('total')->map(fn ($v) => (float) $v)->toArray();
-        $pcts   = $top->map(fn ($row) => $grand > 0
-            ? round((float) $row->total / $grand * 100, 1)
-            : 0.0)->values()->all();
+        $overdue = $top->map(function ($row) use ($overdueByDimension): float {
+            $total = max(0.0, (float) $row->total);
+            $value = (float) ($overdueByDimension->get($row->dim_value)?->total ?? 0);
+
+            return min($total, max(0.0, $value));
+        })->values()->all();
+        $current = array_map(
+            static fn (float $total, float $overdue): float => max(0.0, $total - $overdue),
+            $totals,
+            $overdue,
+        );
+        $overduePcts = array_map(
+            static fn (float $overdue, float $total): float => $total > 0
+                ? round($overdue / $total * 100, 1)
+                : 0.0,
+            $overdue,
+            $totals,
+        );
 
         return [
-            'labels'   => $labels,
-            'pcts'     => $pcts,
-            'datasets' => [[
-                'label'           => "Cartera Vencida por {$label}",
-                'data'            => $totals,
-                'backgroundColor' => '#f97316',
-                'borderWidth'     => 0,
-                'borderRadius'    => 4,
-            ]],
+            'labels'       => $labels,
+            'totals'       => $totals,
+            'overdue_pcts' => $overduePcts,
+            'datasets'     => [
+                [
+                    'label'           => 'Cartera al día',
+                    'data'            => $current,
+                    'backgroundColor' => '#2563eb',
+                    'borderWidth'     => 0,
+                    'stack'           => 'portfolio',
+                ],
+                [
+                    'label'           => 'Cartera vencida',
+                    'data'            => $overdue,
+                    'backgroundColor' => '#f97316',
+                    'borderWidth'     => 0,
+                    'borderRadius'    => 4,
+                    'stack'           => 'portfolio',
+                ],
+            ],
         ];
     }
 

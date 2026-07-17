@@ -197,29 +197,6 @@
     margin: .9rem 0;
 }
 
-/* Classification pills bar */
-.client-view .cv-classif {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .4rem;
-    margin-top: .65rem;
-}
-
-.client-view .cv-classif-pill {
-    align-items: center;
-    background: var(--mcm-surface-soft);
-    border: 1px solid var(--mcm-border);
-    border-radius: 7px;
-    color: var(--mcm-text);
-    display: inline-flex;
-    font-size: .73rem;
-    font-weight: 640;
-    gap: .3rem;
-    padding: .28rem .65rem;
-}
-
-.client-view .cv-classif-pill span { color: var(--mcm-muted); font-size: .65rem; }
-
 /* Contact form */
 .client-view .cv-form-row { margin-bottom: .75rem; }
 .client-view .cv-form-row:last-child { margin-bottom: 0; }
@@ -671,24 +648,6 @@
                         <div class="cv-datum-label">Dirección</div>
                         <div class="cv-datum-value">{{ $c->address ?? '—' }}</div>
                     </div>
-                </div>
-
-                <hr class="cv-divider">
-
-                <div class="cv-datum-label" style="margin-bottom:.5rem;">Clasificación comercial</div>
-                <div class="cv-classif">
-                    @if($c->region)
-                    <span class="cv-classif-pill"><span>Regional</span> {{ $c->region }}</span>
-                    @endif
-                    @if($c->channel)
-                    <span class="cv-classif-pill"><span>Canal</span> {{ $c->channel }}</span>
-                    @endif
-                    @if($c->uen)
-                    <span class="cv-classif-pill"><span>UEN</span> {{ $c->uen }}</span>
-                    @endif
-                    @if(!$c->region && !$c->channel && !$c->uen)
-                    <span style="color:var(--mcm-muted);font-size:.78rem;">Sin clasificación registrada</span>
-                    @endif
                 </div>
 
                 @if($c->notes)

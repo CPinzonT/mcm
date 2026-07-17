@@ -941,11 +941,11 @@ body:has(.sd-page) .fi-page-content {
             <div class="sd-chart-canvas"><canvas x-ref="trend"></canvas></div>
         </div>
         <div class="sd-chart-card">
-            <div class="sd-chart-title">Cartera Vencida por UEN</div>
+            <div class="sd-chart-title">Cartera Total vs Vencida por UEN</div>
             <div class="sd-chart-canvas"><canvas x-ref="byUen"></canvas></div>
         </div>
         <div class="sd-chart-card">
-            <div class="sd-chart-title">Cartera Vencida por Canal</div>
+            <div class="sd-chart-title">Cartera Total vs Vencida por Canal</div>
             <div class="sd-chart-canvas"><canvas x-ref="byChannel"></canvas></div>
         </div>
         <div class="sd-chart-card full">
@@ -1014,6 +1014,23 @@ document.addEventListener('alpine:init', () => {
                     const money = self.fmtShortMoney(v);
                     const pct = pcts?.[ctx.dataIndex];
                     return pct != null && pct !== '' ? money + '\n' + pct + '%' : money;
+                },
+                anchor: 'end',
+                align: 'top',
+                offset: 4,
+            };
+        },
+
+        stackedPortfolioDatalabels(t, totals, overduePcts) {
+            const self = this;
+            return {
+                clip: false,
+                color: t.text,
+                font: { size: 9, weight: '700' },
+                formatter: (_value, ctx) => {
+                    const total = totals?.[ctx.dataIndex] ?? 0;
+                    const pct = overduePcts?.[ctx.dataIndex] ?? 0;
+                    return self.fmtShortMoney(total) + '\n' + Number(pct).toFixed(1) + '% vencida';
                 },
                 anchor: 'end',
                 align: 'top',
@@ -1216,12 +1233,21 @@ document.addEventListener('alpine:init', () => {
             if (data.by_uen?.datasets?.[0]) {
                 const raw = JSON.parse(JSON.stringify(data.by_uen));
                 const labels = raw.labels || [];
-                const pcts = raw.pcts || [];
+                const totals = raw.totals || [];
+                const overduePcts = raw.overdue_pcts || [];
                 const d = { labels: raw.labels, datasets: raw.datasets };
                 d.datasets[0].backgroundColor = mc.blue;
                 d.datasets[0].borderWidth = 0;
+                if (d.datasets[1]) {
+                    d.datasets[1].backgroundColor = mc.orange;
+                    d.datasets[1].borderWidth = 0;
+                }
                 const self = this;
-                const dlBar = self._hasDatalabels ? self.moneyDatalabels(t, pcts) : false;
+                const dlBar = self._hasDatalabels ? self.stackedPortfolioDatalabels(t, totals, overduePcts) : false;
+                if (self._hasDatalabels) {
+                    d.datasets[0].datalabels = { display: false };
+                    if (d.datasets[1]) d.datasets[1].datalabels = dlBar;
+                }
                 this.upsert('byUen', 'bar', d, {
                     onClick: (e, elements) => {
                         if (!elements?.length) return;
@@ -1231,16 +1257,21 @@ document.addEventListener('alpine:init', () => {
                     },
                     layout: self.chartLayoutPadding({ top: 38 }),
                     plugins: {
-                        legend: { display: false },
-                        tooltip: { callbacks: { label(ctx) {
-                            const p = pcts[ctx.dataIndex];
-                            return ' $'+ctx.parsed.y.toLocaleString('es-CO')+(p != null ? ' ('+p+'%)' : '');
-                        } } },
-                        ...(dlBar ? { datalabels: dlBar } : {}),
+                        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, color: t.text, font: { size: 10 } } },
+                        tooltip: { callbacks: {
+                            label(ctx) {
+                                return ` ${ctx.dataset.label}: ${self.fmtShortMoney(ctx.raw)}`;
+                            },
+                            footer(items) {
+                                const idx = items?.[0]?.dataIndex;
+                                if (idx == null) return '';
+                                return `Total: ${self.fmtShortMoney(totals[idx])} · ${Number(overduePcts[idx] || 0).toFixed(1)}% vencida`;
+                            },
+                        } },
                     },
                     scales: {
-                        x: { grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } },
-                        y: { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => self.fmtShortMoney(v) }, grace: '12%' },
+                        x: { stacked: true, grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } },
+                        y: { stacked: true, grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => self.fmtShortMoney(v) }, grace: '12%' },
                     },
                 });
             }
@@ -1249,12 +1280,21 @@ document.addEventListener('alpine:init', () => {
             if (data.by_channel?.datasets?.[0]) {
                 const raw = JSON.parse(JSON.stringify(data.by_channel));
                 const labels = raw.labels || [];
-                const pcts = raw.pcts || [];
+                const totals = raw.totals || [];
+                const overduePcts = raw.overdue_pcts || [];
                 const d = { labels: raw.labels, datasets: raw.datasets };
                 d.datasets[0].backgroundColor = mc.cyan;
                 d.datasets[0].borderWidth = 0;
+                if (d.datasets[1]) {
+                    d.datasets[1].backgroundColor = mc.orange;
+                    d.datasets[1].borderWidth = 0;
+                }
                 const self = this;
-                const dlBarCh = self._hasDatalabels ? self.moneyDatalabels(t, pcts) : false;
+                const dlBarCh = self._hasDatalabels ? self.stackedPortfolioDatalabels(t, totals, overduePcts) : false;
+                if (self._hasDatalabels) {
+                    d.datasets[0].datalabels = { display: false };
+                    if (d.datasets[1]) d.datasets[1].datalabels = dlBarCh;
+                }
                 this.upsert('byChannel', 'bar', d, {
                     onClick: (e, elements) => {
                         if (!elements?.length) return;
@@ -1264,16 +1304,21 @@ document.addEventListener('alpine:init', () => {
                     },
                     layout: self.chartLayoutPadding({ top: 38 }),
                     plugins: {
-                        legend: { display: false },
-                        tooltip: { callbacks: { label(ctx) {
-                            const p = pcts[ctx.dataIndex];
-                            return ' $'+ctx.parsed.y.toLocaleString('es-CO')+(p != null ? ' ('+p+'%)' : '');
-                        } } },
-                        ...(dlBarCh ? { datalabels: dlBarCh } : {}),
+                        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, color: t.text, font: { size: 10 } } },
+                        tooltip: { callbacks: {
+                            label(ctx) {
+                                return ` ${ctx.dataset.label}: ${self.fmtShortMoney(ctx.raw)}`;
+                            },
+                            footer(items) {
+                                const idx = items?.[0]?.dataIndex;
+                                if (idx == null) return '';
+                                return `Total: ${self.fmtShortMoney(totals[idx])} · ${Number(overduePcts[idx] || 0).toFixed(1)}% vencida`;
+                            },
+                        } },
                     },
                     scales: {
-                        x: { grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } },
-                        y: { grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => self.fmtShortMoney(v) }, grace: '12%' },
+                        x: { stacked: true, grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } },
+                        y: { stacked: true, grid: { color: t.grid }, ticks: { color: t.text, font: { size: 10 }, callback: v => self.fmtShortMoney(v) }, grace: '12%' },
                     },
                 });
             }

@@ -9,6 +9,7 @@ use App\Models\ManagementLog;
 use App\Services\Reports\CommitmentActaQuery;
 use App\Models\PortfolioDocument;
 use App\Models\ReportTemplate;
+use App\Services\Reports\AdvisorPortfolioReportService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -191,6 +192,135 @@ class ExportService
         };
 
         return $this->buildXlsxChunked($filename, $headers, $query, $mapper);
+    }
+
+    public function exportAdvisorPortfolioManagement(
+        string $periodFrom = '',
+        string $periodTo = '',
+        string $uen = '',
+        ?string $advisorKey = null,
+    ): StreamedResponse {
+        $filename = 'cartera_gestion_asesor_' . now()->format('Ymd_His') . '.xlsx';
+        $tmpPath = tempnam(sys_get_temp_dir(), 'advisor_report_') . '.xlsx';
+        $report = app(AdvisorPortfolioReportService::class);
+
+        $writer = new XlsxWriter();
+        $writer->openToFile($tmpPath);
+
+        $writer->getCurrentSheet()->setName('Resumen Asesores');
+        $writer->addRow(Row::fromValues([
+            'Asesor', 'Clientes', 'Documentos', 'Gestiones', 'Saldo total', 'Saldo vencido', '% vencido',
+        ]));
+        $advisorRows = $report->advisorSummaries($periodFrom, $periodTo, $uen);
+        if ($advisorKey !== null && $advisorKey !== '') {
+            $advisorRows = array_values(array_filter(
+                $advisorRows,
+                static fn ($row) => $row->advisor_key === $advisorKey,
+            ));
+        }
+        foreach ($advisorRows as $row) {
+            $writer->addRow(Row::fromValues([
+                $row->advisor,
+                $row->clientes,
+                $row->documentos,
+                $row->gestiones,
+                $row->saldo_total,
+                $row->saldo_vencido,
+                $row->saldo_total > 0 ? round($row->saldo_vencido / $row->saldo_total * 100, 1) : 0,
+            ]));
+        }
+
+        $writer->addNewSheetAndMakeItCurrent()->setName('Clientes');
+        $writer->addRow(Row::fromValues([
+            'Asesor', 'Cliente', 'NIT', 'UEN', 'Canal',
+            'Documentos', 'Gestiones', 'Saldo total', 'Saldo vencido', '% vencido',
+        ]));
+        foreach ($report->clientExportRows($periodFrom, $periodTo, $uen, $advisorKey) as $row) {
+            $writer->addRow(Row::fromValues([
+                $row->advisor,
+                $row->client,
+                $row->nit,
+                $row->uen,
+                $row->channel,
+                $row->documentos,
+                $row->gestiones,
+                $row->saldo_total,
+                $row->saldo_vencido,
+                $row->saldo_total > 0 ? round($row->saldo_vencido / $row->saldo_total * 100, 1) : 0,
+            ]));
+        }
+
+        $writer->addNewSheetAndMakeItCurrent()->setName('Cartera');
+        $writer->addRow(Row::fromValues([
+            'Asesor', 'Cliente', 'NIT', 'UEN', 'Canal',
+            'Documento', 'Tipo documento', 'Fecha emisión', 'Fecha vencimiento',
+            'Días mora', 'Valor original', 'Saldo pendiente', 'Estado cartera',
+        ]));
+
+        $report->portfolioExportQuery($periodFrom, $periodTo, $uen, $advisorKey)
+            ->chunk(1000, function ($records) use ($writer): void {
+                foreach ($records as $row) {
+                    $writer->addRow(Row::fromValues([
+                        $row->advisor,
+                        $row->client,
+                        $row->nit,
+                        $row->uen,
+                        $row->channel,
+                        $row->document_number,
+                        $row->document_type,
+                        $row->issue_date,
+                        $row->due_date,
+                        (int) ($row->days_overdue ?? 0),
+                        (float) $row->original_amount,
+                        (float) $row->pending_amount,
+                        $row->status,
+                    ]));
+                }
+            });
+
+        $writer->addNewSheetAndMakeItCurrent()->setName('Gestiones');
+        $writer->addRow(Row::fromValues([
+            'Asesor', 'Cliente', 'NIT', 'UEN', 'Canal', 'Documento',
+            'Fecha gestión', 'Hora', 'Tipo gestión', 'Asunto', 'Resultado',
+            'Descripción', 'Fecha promesa', 'Monto promesa', 'Estado gestión',
+        ]));
+
+        $report->managementExportQuery($periodFrom, $periodTo, $uen, $advisorKey)
+            ->chunk(1000, function ($records) use ($writer, $report): void {
+                foreach ($records as $row) {
+                    $writer->addRow(Row::fromValues([
+                        $row->advisor,
+                        $row->client,
+                        $row->nit,
+                        $row->uen,
+                        $row->channel,
+                        $row->document_number,
+                        $row->contact_date,
+                        $row->contact_time ? substr((string) $row->contact_time, 0, 8) : '',
+                        $report->managementTypeLabel($row->type),
+                        $row->subject,
+                        $row->result,
+                        $row->description,
+                        $row->promised_date,
+                        $row->promised_amount !== null ? (float) $row->promised_amount : '',
+                        $row->status,
+                    ]));
+                }
+            });
+
+        $writer->close();
+
+        return response()->streamDownload(function () use ($tmpPath): void {
+            $handle = fopen($tmpPath, 'rb');
+            while (! feof($handle)) {
+                echo fread($handle, 8192);
+                flush();
+            }
+            fclose($handle);
+            @unlink($tmpPath);
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     private function normalizeExportTime(string $time, bool $end = false): string

@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\ManagementLog;
 use App\Models\PortfolioDocument;
 use App\Services\Documents\DocumentTraceabilityService;
+use App\Services\Reports\AdvisorPortfolioReportService;
 use App\Services\Reports\CommitmentActaQuery;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -36,6 +37,12 @@ class ReportsPage extends Page
     public ?array $rows    = null;
     public array  $columns = [];
     public array  $summary = ['total_rows' => 0, 'total_amount' => 0];
+    public array $expandedAdvisors = [];
+    public array $advisorClients = [];
+    public array $expandedAdvisorClients = [];
+    public array $clientDocuments = [];
+    public array $expandedDocuments = [];
+    public array $documentManagements = [];
 
     public function getHeading(): string|\Illuminate\Contracts\Support\Htmlable|null
     {
@@ -106,6 +113,20 @@ class ReportsPage extends Page
         ]));
     }
 
+    public function advisorReportExportUrl(?string $advisorKey = null): ?string
+    {
+        if ($this->reportType !== 'cartera_gestor' || $this->rows === null) {
+            return null;
+        }
+
+        return route('admin.exports.advisor-portfolio-management', array_filter([
+            'period_from' => $this->periodFrom ?: null,
+            'period_to' => $this->periodTo ?: null,
+            'uen' => $this->uen ?: null,
+            'advisor' => $advisorKey,
+        ], static fn ($value) => $value !== null && $value !== ''));
+    }
+
     public function actaDateRangeLabel(): ?string
     {
         $range = $this->resolveActaDateRange();
@@ -138,6 +159,7 @@ class ReportsPage extends Page
         $this->rows = null;
         $this->columns = [];
         $this->summary = ['total_rows' => 0, 'total_amount' => 0];
+        $this->resetAdvisorDrilldown();
     }
 
     /**
@@ -177,6 +199,8 @@ class ReportsPage extends Page
                 ->send();
             return;
         }
+
+        $this->resetAdvisorDrilldown();
 
         [$this->columns, $this->rows, $this->summary] = match ($this->reportType) {
             'cartera_regional'     => $this->reportCarteraRegional(),
@@ -276,26 +300,93 @@ class ReportsPage extends Page
             ['key' => 'advisor',        'label' => 'Asesor'],
             ['key' => 'clientes',       'label' => 'Clientes'],
             ['key' => 'documentos',     'label' => 'Documentos'],
-            ['key' => 'saldo_total',    'label' => 'Saldo total'],
-            ['key' => 'saldo_vencido',  'label' => 'Saldo vencido'],
+            ['key' => 'gestiones',      'label' => 'Gestiones'],
+            ['key' => 'saldo_total',    'label' => 'Saldo total', 'format' => 'money'],
+            ['key' => 'saldo_vencido',  'label' => 'Saldo vencido', 'format' => 'money'],
         ];
 
-        $rows = $this->basePortfolioQuery()
-            ->leftJoin('advisors as a', 'a.id', '=', 'pd.advisor_id')
-            ->select([
-                DB::raw('COALESCE(a.name, "Sin asignar") as advisor'),
-                DB::raw('COUNT(DISTINCT c.id) as clientes'),
-                DB::raw('COUNT(pd.id) as documentos'),
-                DB::raw('SUM(pd.pending_amount) as saldo_total'),
-                DB::raw('SUM(CASE WHEN pd.days_overdue > 0 THEN pd.pending_amount ELSE 0 END) as saldo_vencido'),
-            ])
-            ->groupBy('pd.advisor_id', 'a.name')
-            ->orderByDesc('saldo_total')
-            ->get()->toArray();
+        $rows = app(AdvisorPortfolioReportService::class)->advisorSummaries(
+            $this->periodFrom,
+            $this->periodTo,
+            $this->uen,
+        );
 
         $total = array_sum(array_column((array) $rows, 'saldo_total'));
 
         return [$columns, $rows, ['total_rows' => count($rows), 'total_amount' => $total]];
+    }
+
+    public function toggleAdvisorDrilldown(string $advisorKey): void
+    {
+        if (($this->expandedAdvisors[$advisorKey] ?? false) === true) {
+            unset($this->expandedAdvisors[$advisorKey]);
+
+            return;
+        }
+
+        $this->advisorClients[$advisorKey] ??= app(AdvisorPortfolioReportService::class)
+            ->clientSummaries($advisorKey, $this->periodFrom, $this->periodTo, $this->uen);
+        $this->expandedAdvisors[$advisorKey] = true;
+    }
+
+    public function toggleAdvisorClient(string $advisorKey, int $clientId): void
+    {
+        $stateKey = $this->advisorClientStateKey($advisorKey, $clientId);
+
+        if (($this->expandedAdvisorClients[$stateKey] ?? false) === true) {
+            unset($this->expandedAdvisorClients[$stateKey]);
+
+            return;
+        }
+
+        $this->clientDocuments[$stateKey] ??= app(AdvisorPortfolioReportService::class)
+            ->documentRows($advisorKey, $clientId, $this->periodFrom, $this->periodTo, $this->uen);
+        $this->expandedAdvisorClients[$stateKey] = true;
+    }
+
+    public function toggleDocumentManagements(
+        string $advisorKey,
+        int $clientId,
+        string $documentKey,
+    ): void {
+        $stateKey = $this->documentStateKey($advisorKey, $clientId, $documentKey);
+
+        if (($this->expandedDocuments[$stateKey] ?? false) === true) {
+            unset($this->expandedDocuments[$stateKey]);
+
+            return;
+        }
+
+        $this->documentManagements[$stateKey] ??= app(AdvisorPortfolioReportService::class)
+            ->managementRows(
+                $advisorKey,
+                $clientId,
+                $documentKey,
+                $this->periodFrom,
+                $this->periodTo,
+                $this->uen,
+            );
+        $this->expandedDocuments[$stateKey] = true;
+    }
+
+    public function advisorClientStateKey(string $advisorKey, int $clientId): string
+    {
+        return "{$advisorKey}:{$clientId}";
+    }
+
+    public function documentStateKey(string $advisorKey, int $clientId, string $documentKey): string
+    {
+        return "{$advisorKey}:{$clientId}:{$documentKey}";
+    }
+
+    private function resetAdvisorDrilldown(): void
+    {
+        $this->expandedAdvisors = [];
+        $this->advisorClients = [];
+        $this->expandedAdvisorClients = [];
+        $this->clientDocuments = [];
+        $this->expandedDocuments = [];
+        $this->documentManagements = [];
     }
 
     private function reportPromesasPendientes(): array

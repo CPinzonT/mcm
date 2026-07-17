@@ -11,6 +11,8 @@ Route::middleware('auth')->prefix('admin')->name('admin.exports.')->group(functi
     Route::get('/export/collection-details', [ExportController::class, 'collectionDetails'])->name('collection');
     Route::get('/export/reconciliation', [ExportController::class, 'reconciliation'])->name('reconciliation');
     Route::get('/export/commitment-acta', [ExportController::class, 'commitmentActa'])->name('commitment-acta');
+    Route::get('/export/advisor-portfolio-management', [ExportController::class, 'advisorPortfolioManagement'])
+        ->name('advisor-portfolio-management');
 });
 
 Route::middleware('auth')->prefix('admin')->name('admin.loads.')->group(function (): void {

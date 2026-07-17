@@ -89,6 +89,71 @@
     padding: 0.3rem 0.75rem;
 }
 
+.reports-page .rp-drill-btn {
+    align-items: center;
+    color: var(--mcm-text-strong);
+    display: inline-flex;
+    font-size: .78rem;
+    font-weight: 650;
+    gap: .45rem;
+    text-align: left;
+}
+.reports-page .rp-drill-caret {
+    color: var(--mcm-accent);
+    display: inline-block;
+    font-size: .78rem;
+    width: .8rem;
+}
+.reports-page .rp-drill-row > td { background: var(--mcm-surface-soft); padding: .75rem 1rem !important; }
+.reports-page .rp-drill-panel {
+    border-left: 3px solid var(--mcm-accent);
+    display: grid;
+    gap: .65rem;
+    padding-left: .75rem;
+}
+.reports-page .rp-drill-table {
+    border: 1px solid var(--mcm-border);
+    border-collapse: separate;
+    border-radius: 8px;
+    border-spacing: 0;
+    font-size: .72rem;
+    overflow: hidden;
+    width: 100%;
+}
+.reports-page .rp-drill-table th {
+    background: color-mix(in srgb, var(--mcm-surface-strong) 72%, transparent);
+    color: var(--mcm-muted);
+    font-size: .63rem;
+    letter-spacing: .04em;
+    padding: .45rem .55rem;
+    text-transform: uppercase;
+}
+.reports-page .rp-drill-table td {
+    background: var(--mcm-surface);
+    border-top: 1px solid var(--mcm-border);
+    color: var(--mcm-text);
+    padding: .48rem .55rem;
+    vertical-align: top;
+}
+.reports-page .rp-level-documents,
+.reports-page .rp-level-managements {
+    background: var(--mcm-surface-soft);
+    border-left: 2px solid var(--mcm-border-strong);
+    padding: .65rem;
+}
+.reports-page .rp-muted { color: var(--mcm-muted); font-size: .68rem; }
+.reports-page .rp-description { max-width: 28rem; white-space: normal; }
+.reports-page .rp-row-export {
+    color: var(--mcm-accent);
+    display: inline-block;
+    font-size: .65rem;
+    font-weight: 650;
+    margin-left: 1.25rem;
+    margin-top: .2rem;
+    text-decoration: none;
+}
+.reports-page .rp-row-export:hover { text-decoration: underline; }
+
 @media (max-width: 1200px) { .reports-page .rp-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
     .reports-page .rp-filter-grid { grid-template-columns: 1fr; }
@@ -101,7 +166,7 @@
 $reportLabels = [
     'cartera_regional'     => 'Cartera por Regional',
     'cartera_canal'        => 'Cartera por Canal',
-    'cartera_gestor'       => 'Cartera por Asesor',
+    'cartera_gestor'       => 'Cartera y Gestión por Asesor',
     'promesas_pendientes'  => 'Promesas Pendientes',
     'promesas_incumplidas' => 'Promesas Incumplidas',
     'gestiones_gestor'     => 'Gestiones por Asesor',
@@ -111,7 +176,9 @@ $reportLabels = [
 ];
 $isActa = $this->reportType === 'acta_compromisos';
 $isTraceability = $this->reportType === 'trazabilidad_documental';
+$isAdvisorReport = $this->reportType === 'cartera_gestor';
 $exportUrl = $isActa ? $this->exportActaUrl() : null;
+$advisorExportUrl = $isAdvisorReport ? $this->advisorReportExportUrl() : null;
 $currentLabel = $reportLabels[$this->reportType] ?? null;
 $hasData = $currentLabel && count($this->rows ?? []) > 0;
 $hasGenerated = $currentLabel && isset($this->rows);
@@ -162,6 +229,8 @@ $hasGenerated = $currentLabel && isset($this->rows);
             <button wire:click="generateReport" class="btn-primary" style="align-self:flex-end"><x-heroicon-o-play style="width:1rem;height:1rem"/>Generar</button>
             @if($isActa && $exportUrl)
             <a href="{{ $exportUrl }}" target="_blank" class="btn-ghost" style="align-self:flex-end" title="Descarga Excel del acta de compromisos"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar acta</a>
+            @elseif($isAdvisorReport && $advisorExportUrl && $hasData)
+            <a href="{{ $advisorExportUrl }}" target="_blank" class="btn-ghost" style="align-self:flex-end" title="Descarga Excel con hojas de cartera y gestiones"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar cartera y gestión</a>
             @elseif(!$isActa && !$isTraceability && $hasData)
             <a href="{{ route('admin.exports.portfolio', ['period' => $this->periodFrom]) }}" target="_blank" class="btn-ghost" style="align-self:flex-end"><x-heroicon-o-arrow-down-tray style="width:1rem;height:1rem"/>Exportar</a>
             @endif
@@ -170,6 +239,14 @@ $hasGenerated = $currentLabel && isset($this->rows);
         <p style="margin-top:.65rem;font-size:.78rem;color:var(--mcm-muted);">
             Se consulta únicamente al presionar <strong style="color:var(--mcm-text-strong);">Generar</strong>.
             Muestra hasta los 100 documentos más recientes del cliente en la cartera activa.
+        </p>
+        @endif
+        @if($isAdvisorReport)
+        <p style="margin-top:.65rem;font-size:.78rem;color:var(--mcm-muted);">
+            Expande un asesor para ver sus clientes; luego expande cada cliente para consultar documentos y las gestiones asociadas.
+            El Excel contiene hojas separadas de <strong style="color:var(--mcm-text-strong);">Resumen Asesores</strong>,
+            <strong style="color:var(--mcm-text-strong);">Clientes</strong>, <strong style="color:var(--mcm-text-strong);">Cartera</strong>
+            y <strong style="color:var(--mcm-text-strong);">Gestiones</strong>.
         </p>
         @endif
         @if($isActa && $this->actaDateRangeLabel())
@@ -204,6 +281,195 @@ $hasGenerated = $currentLabel && isset($this->rows);
         @else
         <div class="rp-table-scroll">
             <table class="data-table" style="width:100%">
+                @if($isAdvisorReport)
+                <thead>
+                    <tr>
+                        <th>Asesor</th>
+                        <th>Clientes</th>
+                        <th>Documentos</th>
+                        <th>Gestiones</th>
+                        <th>Saldo total</th>
+                        <th>Saldo vencido</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($this->rows as $row)
+                    @php
+                        $advisorKey = (string) (is_array($row) ? $row['advisor_key'] : $row->advisor_key);
+                        $advisorExpanded = (bool) ($this->expandedAdvisors[$advisorKey] ?? false);
+                        $advisorName = is_array($row) ? $row['advisor'] : $row->advisor;
+                    @endphp
+                    <tr wire:key="advisor-summary-{{ $advisorKey }}">
+                        <td>
+                            <button type="button" class="rp-drill-btn" wire:click='toggleAdvisorDrilldown(@json($advisorKey))'>
+                                <span class="rp-drill-caret">{{ $advisorExpanded ? '▼' : '▶' }}</span>
+                                {{ $advisorName }}
+                            </button>
+                            <div>
+                                <a href="{{ $this->advisorReportExportUrl($advisorKey) }}" target="_blank" class="rp-row-export">
+                                    Exportar este asesor
+                                </a>
+                            </div>
+                        </td>
+                        <td>{{ number_format((int) (is_array($row) ? $row['clientes'] : $row->clientes), 0, ',', '.') }}</td>
+                        <td>{{ number_format((int) (is_array($row) ? $row['documentos'] : $row->documentos), 0, ',', '.') }}</td>
+                        <td>{{ number_format((int) (is_array($row) ? $row['gestiones'] : $row->gestiones), 0, ',', '.') }}</td>
+                        <td>${{ number_format((float) (is_array($row) ? $row['saldo_total'] : $row->saldo_total), 0, ',', '.') }}</td>
+                        <td>${{ number_format((float) (is_array($row) ? $row['saldo_vencido'] : $row->saldo_vencido), 0, ',', '.') }}</td>
+                    </tr>
+
+                    @if($advisorExpanded)
+                    <tr class="rp-drill-row" wire:key="advisor-detail-{{ $advisorKey }}">
+                        <td colspan="6">
+                            <div class="rp-drill-panel">
+                                <table class="rp-drill-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Cliente</th>
+                                            <th>NIT</th>
+                                            <th>UEN / Canal</th>
+                                            <th>Documentos</th>
+                                            <th>Gestiones</th>
+                                            <th>Saldo total</th>
+                                            <th>Saldo vencido</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($this->advisorClients[$advisorKey] ?? [] as $client)
+                                        @php
+                                            $clientId = (int) $client['client_id'];
+                                            $clientStateKey = $this->advisorClientStateKey($advisorKey, $clientId);
+                                            $clientExpanded = (bool) ($this->expandedAdvisorClients[$clientStateKey] ?? false);
+                                        @endphp
+                                        <tr wire:key="advisor-client-{{ $clientStateKey }}">
+                                            <td>
+                                                <button type="button" class="rp-drill-btn" wire:click='toggleAdvisorClient(@json($advisorKey), {{ $clientId }})'>
+                                                    <span class="rp-drill-caret">{{ $clientExpanded ? '▼' : '▶' }}</span>
+                                                    {{ $client['client'] }}
+                                                </button>
+                                            </td>
+                                            <td>{{ $client['nit'] ?: '—' }}</td>
+                                            <td>
+                                                {{ $client['uen'] ?: '—' }}
+                                                <div class="rp-muted">{{ $client['channel'] ?: 'Sin canal' }}</div>
+                                            </td>
+                                            <td>{{ number_format($client['documentos'], 0, ',', '.') }}</td>
+                                            <td>{{ number_format($client['gestiones'], 0, ',', '.') }}</td>
+                                            <td>${{ number_format($client['saldo_total'], 0, ',', '.') }}</td>
+                                            <td>${{ number_format($client['saldo_vencido'], 0, ',', '.') }}</td>
+                                        </tr>
+
+                                        @if($clientExpanded)
+                                        <tr wire:key="client-documents-{{ $clientStateKey }}">
+                                            <td colspan="7" class="rp-level-documents">
+                                                <table class="rp-drill-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Documento</th>
+                                                            <th>Tipo</th>
+                                                            <th>Emisión / Vencimiento</th>
+                                                            <th>Días mora</th>
+                                                            <th>Valor original</th>
+                                                            <th>Saldo</th>
+                                                            <th>Estado</th>
+                                                            <th>Gestiones / Última gestión</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @forelse($this->clientDocuments[$clientStateKey] ?? [] as $document)
+                                                        @php
+                                                            $documentKey = (string) $document['document_key'];
+                                                            $documentStateKey = $this->documentStateKey($advisorKey, $clientId, $documentKey);
+                                                            $documentExpanded = (bool) ($this->expandedDocuments[$documentStateKey] ?? false);
+                                                        @endphp
+                                                        <tr wire:key="client-document-{{ $documentStateKey }}">
+                                                            <td>
+                                                                @if($document['management_count'] > 0)
+                                                                <button type="button" class="rp-drill-btn" wire:click='toggleDocumentManagements(@json($advisorKey), {{ $clientId }}, @json($documentKey))'>
+                                                                    <span class="rp-drill-caret">{{ $documentExpanded ? '▼' : '▶' }}</span>
+                                                                    {{ $document['document_number'] }}
+                                                                </button>
+                                                                @else
+                                                                    <span style="padding-left:1.25rem;">{{ $document['document_number'] }}</span>
+                                                                @endif
+                                                            </td>
+                                                            <td>{{ $document['document_type'] }}</td>
+                                                            <td>
+                                                                {{ $document['issue_date'] ? \Carbon\Carbon::parse($document['issue_date'])->format('d/m/Y') : '—' }}
+                                                                <div class="rp-muted">Vence: {{ $document['due_date'] ? \Carbon\Carbon::parse($document['due_date'])->format('d/m/Y') : '—' }}</div>
+                                                            </td>
+                                                            <td>{{ $document['is_general'] ? '—' : number_format($document['days_overdue'], 0, ',', '.') }}</td>
+                                                            <td>{{ $document['is_general'] ? '—' : '$'.number_format($document['original_amount'], 0, ',', '.') }}</td>
+                                                            <td>{{ $document['is_general'] ? '—' : '$'.number_format($document['pending_amount'], 0, ',', '.') }}</td>
+                                                            <td>{{ $document['is_general'] ? 'Gestión' : $document['status'] }}</td>
+                                                            <td>
+                                                                {{ number_format($document['management_count'], 0, ',', '.') }}
+                                                                <div class="rp-muted">{{ $document['last_management'] ?: 'Sin gestiones' }}</div>
+                                                            </td>
+                                                        </tr>
+
+                                                        @if($documentExpanded)
+                                                        <tr wire:key="document-managements-{{ $documentStateKey }}">
+                                                            <td colspan="8" class="rp-level-managements">
+                                                                <table class="rp-drill-table">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th>Fecha</th>
+                                                                            <th>Tipo</th>
+                                                                            <th>Asunto</th>
+                                                                            <th>Resultado</th>
+                                                                            <th>Promesa</th>
+                                                                            <th>Estado</th>
+                                                                            <th>Descripción</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        @forelse($this->documentManagements[$documentStateKey] ?? [] as $management)
+                                                                        <tr wire:key="management-{{ $management['id'] }}">
+                                                                            <td>
+                                                                                {{ $management['contact_date'] ? \Carbon\Carbon::parse($management['contact_date'])->format('d/m/Y') : '—' }}
+                                                                                @if($management['contact_time'])<div class="rp-muted">{{ $management['contact_time'] }}</div>@endif
+                                                                            </td>
+                                                                            <td>{{ $management['type'] }}</td>
+                                                                            <td>{{ $management['subject'] }}</td>
+                                                                            <td>{{ $management['result'] ?: '—' }}</td>
+                                                                            <td>
+                                                                                {{ $management['promised_date'] ? \Carbon\Carbon::parse($management['promised_date'])->format('d/m/Y') : '—' }}
+                                                                                @if($management['promised_amount'] !== null)
+                                                                                <div class="rp-muted">${{ number_format($management['promised_amount'], 0, ',', '.') }}</div>
+                                                                                @endif
+                                                                            </td>
+                                                                            <td>{{ $management['status'] ?: '—' }}</td>
+                                                                            <td class="rp-description">{{ $management['description'] ?: '—' }}</td>
+                                                                        </tr>
+                                                                        @empty
+                                                                        <tr><td colspan="7" class="rp-muted">Sin gestiones registradas.</td></tr>
+                                                                        @endforelse
+                                                                    </tbody>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                        @endif
+                                                        @empty
+                                                        <tr><td colspan="8" class="rp-muted">Sin documentos de cartera para este cliente.</td></tr>
+                                                        @endforelse
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                        @endif
+                                        @empty
+                                        <tr><td colspan="7" class="rp-muted">Sin clientes asignados en la cartera activa.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    @endif
+                    @endforeach
+                </tbody>
+                @else
                 <thead><tr>@foreach($this->columns as $col)<th>{{ $col['label'] }}</th>@endforeach</tr></thead>
                 <tbody>
                     @foreach($this->rows as $row)
@@ -228,6 +494,7 @@ $hasGenerated = $currentLabel && isset($this->rows);
                     </tr>
                     @endforeach
                 </tbody>
+                @endif
             </table>
         </div>
         @endif

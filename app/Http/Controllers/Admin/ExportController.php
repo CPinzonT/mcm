@@ -71,4 +71,14 @@ class ExportController extends Controller
             $request->query('time_to'),
         );
     }
+
+    public function advisorPortfolioManagement(Request $request)
+    {
+        return $this->export->exportAdvisorPortfolioManagement(
+            (string) $request->query('period_from', ''),
+            (string) $request->query('period_to', ''),
+            (string) $request->query('uen', ''),
+            $request->filled('advisor') ? (string) $request->query('advisor') : null,
+        );
+    }
 }

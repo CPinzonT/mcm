@@ -11,29 +11,14 @@ use Illuminate\Database\Query\Builder;
  */
 trait AppliesCollectionPaymentDateScope
 {
-    /**
-     * Corte del mes de la última cartera activa (día 1 → fecha de corte del archivo).
-     *
-     * @return array{0: string, 1: string}
-     */
+    /** @return array{0: string, 1: string} Último mes calendario completamente cerrado. */
     protected function resolveDefaultMonthCutRange(): array
     {
-        $portfolioLoad = $this->resolveDashboardPortfolioLoad();
-
-        if ($portfolioLoad?->period_date) {
-            $cut = Carbon::parse($portfolioLoad->period_date);
-
-            return [
-                $cut->copy()->startOfMonth()->toDateString(),
-                $cut->copy()->endOfMonth()->toDateString(),
-            ];
-        }
-
-        $today = Carbon::today();
+        $closedMonth = Carbon::today()->subMonthNoOverflow();
 
         return [
-            $today->copy()->startOfMonth()->toDateString(),
-            $today->toDateString(),
+            $closedMonth->copy()->startOfMonth()->toDateString(),
+            $closedMonth->copy()->endOfMonth()->toDateString(),
         ];
     }
 

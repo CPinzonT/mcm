@@ -143,7 +143,7 @@ class KpiService
             : 0.0;
 
         // ── KPI 10: Presupuesto del período ──────────────────────────────
-        $budget = $this->budgetForPeriod($filters);
+        $budget = $this->budgetForPeriod($recaudoFilters);
 
         // ── KPI 11: Recaudo vs Meta ───────────────────────────────────────
         $vsMetaRate = ($hasRecaudoData && $budget !== null && $budget > 0)
@@ -212,7 +212,7 @@ class KpiService
             'collection_load_id' => $collectionLoad?->id,
             'collection_load_ref' => $collectionLoad?->reference,
             'collection_load_total' => $collectionLoad ? (float) ($collectionLoad->total_collected ?? 0) : 0.0,
-            'collection_date_label' => $this->defaultMonthCutPaymentLabel(),
+            'collection_date_label' => $this->collectionPaymentDateLabel($recaudoFilters),
             'has_recaudo_load'  => $hasRecaudoLoad,
             'budget'            => $budget,
             'vs_meta_rate'      => $vsMetaRate,
@@ -406,11 +406,16 @@ class KpiService
     }
 
     /**
-     * Filtros para recaudo/recuperación: dimensiones del tablero + corte del mes de cartera.
+     * Recaudo/recuperación:
+     * - un mes pasado seleccionado de principio a fin;
+     * - un año completo seleccionado;
+     * - de lo contrario, el último mes calendario cerrado.
      */
     private function filtersForRecaudoMonthCut(DashboardFiltersData $filters): DashboardFiltersData
     {
-        if ($filters->period || $this->isFullYearDateRange($filters)) {
+        if ($this->isClosedPeriod($filters)
+            || $this->isClosedFullMonthDateRange($filters)
+            || $this->isFullYearDateRange($filters)) {
             [$start, $end] = $this->resolveCollectionPaymentDateRange($filters);
         } else {
             [$start, $end] = $this->resolveDefaultMonthCutRange();
@@ -432,6 +437,32 @@ class KpiService
             riskLevels: $filters->riskLevels,
             documentTypes: $filters->documentTypes,
         );
+    }
+
+    private function isClosedPeriod(DashboardFiltersData $filters): bool
+    {
+        if (!$filters->period) {
+            return false;
+        }
+
+        return \Carbon\Carbon::parse($filters->period . '-01')
+            ->endOfMonth()
+            ->lt(\Carbon\Carbon::today());
+    }
+
+    private function isClosedFullMonthDateRange(DashboardFiltersData $filters): bool
+    {
+        if (!$filters->dateFrom || !$filters->dateTo) {
+            return false;
+        }
+
+        $from = \Carbon\Carbon::parse($filters->dateFrom);
+        $to = \Carbon\Carbon::parse($filters->dateTo);
+
+        return $from->isSameMonth($to)
+            && $from->day === 1
+            && $to->day === $to->daysInMonth
+            && $to->lt(\Carbon\Carbon::today());
     }
 
     private function isFullYearDateRange(DashboardFiltersData $filters): bool

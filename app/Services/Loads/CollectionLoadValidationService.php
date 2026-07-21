@@ -24,11 +24,13 @@ class CollectionLoadValidationService
             'total_pago_recibido', 'totalpagorecibido', 'total_pagorecibido',
         ],
         'importe_aplicado_uen' => [
-            'importe_aplicado_uen', 'importeaplicadouen', 'importe_aplicado',
+            'importe_aplicado_uen', 'importeaplicadouen',
         ],
-        'fecha_pago' => [
+        'fecha_aplicacion' => [
             'fecha_aplicacion', 'fecha_de_aplicacion', 'fechaaplicacion', 'application_date',
-            'fecha_pago', 'payment_date', 'fecha_recibo', 'fecha_de_recibo', 'fecharecibo', 'fecha',
+        ],
+        'fecha_recibo' => [
+            'fecha_recibo', 'fecha_de_recibo', 'fecharecibo', 'fecha_pago', 'payment_date', 'fecha',
         ],
         'nro_recibo' => [
             'nro_recibo', 'recibo', 'nro_de_recibo', 'receipt_number', 'numero_recibo',
@@ -71,7 +73,6 @@ class CollectionLoadValidationService
 
         $errors = [];
         $normalizedRows = [];
-        $seenDuplicates = [];
         $totalRows = 0;
         $emptyRows = 0;
         $duplicateRows = 0;
@@ -98,6 +99,28 @@ class CollectionLoadValidationService
                     break;
                 }
 
+                if (isset($candidateMap['documento'])
+                    && ! isset($candidateMap['importe_aplicado_uen'])
+                    && (isset($candidateMap['valor_pagado']) || isset($candidateMap['total_pago_recibido']))) {
+                    $errors[] = LoadValidationErrorData::general(
+                        'El archivo de recaudos debe incluir la columna Importe aplicado UEN. '
+                        . 'Importe aplicado, Valor pagado y Total pago recibido no se usan para calcular el recaudo.',
+                        'missing_importe_aplicado_uen',
+                    );
+                    break;
+                }
+
+                if (isset($candidateMap['documento'], $candidateMap['importe_aplicado_uen'])
+                    && ! isset($candidateMap['fecha_aplicacion'])
+                    && isset($candidateMap['fecha_recibo'])) {
+                    $errors[] = LoadValidationErrorData::general(
+                        'El archivo de recaudos debe incluir la columna FechaAplicacion. '
+                        . 'FechaRecibo no se usa para determinar el mes del recaudo.',
+                        'missing_fecha_aplicacion',
+                    );
+                    break;
+                }
+
                 if ($this->hasRequiredCollectionHeaders($candidateMap)) {
                     $headerMap = $candidateMap;
                     $usesHeader = true;
@@ -106,7 +129,7 @@ class CollectionLoadValidationService
 
                 if ($rowNumber >= self::HEADER_SCAN_LIMIT) {
                     $errors[] = LoadValidationErrorData::general(
-                        'No se reconocio el encabezado de recaudos (se esperan columnas como Nro. documento aplicado, Importe aplicado y Fecha de recibo/aplicacion).',
+                        'No se reconocio el encabezado de recaudos (se requieren Nro. documento aplicado, Importe aplicado UEN y FechaAplicacion).',
                         'header_not_found'
                     );
                     break;
@@ -125,25 +148,6 @@ class CollectionLoadValidationService
             $payload = $this->rowPayload($headerMap, $values);
             $rowErrors = [];
             $normalized = $this->normalizeRow($rowNumber, $payload, $rowErrors);
-
-            if ($normalized !== null) {
-                $duplicateKey = implode('|', [
-                    $normalized['document_number'],
-                    $normalized['client_name'] ?? '',
-                    $normalized['seller_name'] ?? '',
-                    $normalized['amount'],
-                    $normalized['payment_date'] ?? 'no-date',
-                    $normalized['receipt_number'] ?? 'no-receipt',
-                ]);
-
-                if (isset($seenDuplicates[$duplicateKey])) {
-                    $duplicateRows++;
-                    $emptyRows++;
-                    $normalized = null;
-                } else {
-                    $seenDuplicates[$duplicateKey] = true;
-                }
-            }
 
             if ($rowErrors !== []) {
                 foreach ($rowErrors as $rowError) {
@@ -222,11 +226,7 @@ class CollectionLoadValidationService
      */
     private function hasRequiredCollectionHeaders(array $map): bool
     {
-        $hasAmount = isset($map['valor_pagado'])
-            || isset($map['importe_aplicado_uen'])
-            || isset($map['total_pago_recibido']);
-
-        return isset($map['documento']) && $hasAmount;
+        return isset($map['documento'], $map['importe_aplicado_uen'], $map['fecha_aplicacion']);
     }
 
     private function rowPayload(array $headerMap, array $values): array
@@ -254,11 +254,15 @@ class CollectionLoadValidationService
             return null;
         }
 
-        $paymentDate = $this->normalizer->parseDate($payload['fecha_pago'] ?? null);
+        $paymentDate = $this->normalizer->parseDate($payload['fecha_aplicacion'] ?? null);
 
-        $fechaRaw = trim((string) ($payload['fecha_pago'] ?? ''));
-        if ($fechaRaw !== '' && $paymentDate === null) {
-            $rowErrors[] = new LoadValidationErrorData($rowNumber, 'fecha_pago', 'invalid_date', 'La fecha de pago no es valida.');
+        if ($paymentDate === null) {
+            $rowErrors[] = new LoadValidationErrorData(
+                $rowNumber,
+                'fecha_aplicacion',
+                'invalid_date',
+                'La fecha de aplicacion no es valida.',
+            );
         }
 
         if ($rowErrors !== []) {
@@ -285,23 +289,7 @@ class CollectionLoadValidationService
 
     private function resolveRowAmount(array $payload): ?float
     {
-        $importeUen = $this->normalizer->parseNumber($payload['importe_aplicado_uen'] ?? null);
-        $totalPago = $this->normalizer->parseNumber($payload['total_pago_recibido'] ?? null);
-        $legacy = $this->normalizer->parseNumber($payload['valor_pagado'] ?? null);
-
-        if ($importeUen !== null && abs($importeUen) >= 0.0001) {
-            return $importeUen;
-        }
-
-        if ($totalPago !== null && abs($totalPago) >= 0.0001) {
-            return $totalPago;
-        }
-
-        if ($legacy !== null && abs($legacy) >= 0.0001) {
-            return $legacy;
-        }
-
-        return null;
+        return $this->normalizer->parseNumber($payload['importe_aplicado_uen'] ?? null);
     }
 
     private function buildAliasLookup(array $aliases): array

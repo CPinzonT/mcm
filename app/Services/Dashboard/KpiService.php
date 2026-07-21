@@ -492,7 +492,12 @@ class KpiService
 
         $q = DB::table('collection_details as cd')
             ->leftJoin('clients as c', 'c.id', '=', 'cd.client_id')
-            ->where('cd.collection_load_id', (int) $load->id);
+            ->where('cd.collection_load_id', (int) $load->id)
+            // Las cargas anteriores podían usar Total pago recibido como respaldo.
+            // El KPI solo admite filas originadas en Importe aplicado UEN.
+            ->whereRaw(
+                "ABS(COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(cd.source_payload, '$.importe_aplicado_uen')) AS DECIMAL(20,2)), 0)) >= 0.0001"
+            );
 
         $this->applyCollectionPaymentDateScope($q, $filters);
 

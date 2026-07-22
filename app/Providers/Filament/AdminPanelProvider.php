@@ -89,7 +89,8 @@ class AdminPanelProvider extends PanelProvider
             )
             ->renderHook(
                 PanelsRenderHook::SCRIPTS_AFTER,
-                fn (): string => view('filament.partials.chart-money-formatter')->render(),
+                fn (): string => view('filament.partials.chart-money-formatter')->render()
+                    . view('filament.partials.global-processing-indicator')->render(),
             );
     }
 

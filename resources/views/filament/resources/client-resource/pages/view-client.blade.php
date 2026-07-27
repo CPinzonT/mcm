@@ -311,6 +311,22 @@
     min-width: 12rem;
 }
 
+.client-view .cv-doc-status-select {
+    min-width: 10rem;
+    border: 1px solid var(--mcm-border);
+    border-radius: .45rem;
+    background: var(--mcm-input-surface, var(--mcm-surface));
+    color: var(--mcm-text);
+    font-size: .76rem;
+    padding: .48rem .65rem;
+}
+
+.client-view .cv-doc-status-select:focus {
+    border-color: var(--mcm-accent);
+    box-shadow: 0 0 0 2px var(--mcm-accent-soft);
+    outline: none;
+}
+
 .client-view .cv-doc-search-hint {
     color: var(--mcm-muted);
     font-size: .72rem;
@@ -721,8 +737,14 @@
                    placeholder="Buscar documento (número, referencia o tipo)…"
                    autocomplete="off"
                    spellcheck="false">
-            @if(trim($this->docSearch) !== '')
-                <button type="button" wire:click="clearDocSearch" class="btn-ghost" style="font-size:.72rem;padding:.35rem .65rem;">
+            <select wire:model.live="docStatus" class="cv-doc-status-select" aria-label="Filtrar documentos por estado">
+                <option value="">Todos los estados</option>
+                @foreach($this->documentStatusOptions() as $statusValue => $statusLabel)
+                    <option value="{{ $statusValue }}">{{ $statusLabel }}</option>
+                @endforeach
+            </select>
+            @if(trim($this->docSearch) !== '' || $this->docStatus !== '')
+                <button type="button" wire:click="clearDocumentFilters" class="btn-ghost" style="font-size:.72rem;padding:.35rem .65rem;">
                     Limpiar
                 </button>
                 <span class="cv-doc-search-hint">
@@ -791,7 +813,7 @@
                         <td>
                             @php $s = $doc->status; @endphp
                             <span class="badge-pill {{ $s === 'active' ? 'badge-green' : ($s === 'partial' ? 'badge-amber' : 'badge-gray') }}">
-                                {{ match($s) { 'active'=>'Activo','partial'=>'Parcial','in_process'=>'En proceso','closed'=>'Cerrado',default=>$s??'—' } }}
+                                {{ match($s) { 'active'=>'Activo','partial'=>'Parcial','in_process'=>'En proceso','paid'=>'Pagado','closed'=>'Cerrado',default=>$s??'—' } }}
                             </span>
                         </td>
                         <td style="text-align:center;">
@@ -808,10 +830,10 @@
                         <td colspan="9">
                             <div class="cv-empty">
                                 <x-heroicon-o-document-text />
-                                @if(trim($this->docSearch) !== '')
-                                    <p>No hay documentos que coincidan con «{{ trim($this->docSearch) }}».</p>
-                                    <button type="button" wire:click="clearDocSearch" class="btn-ghost" style="margin-top:.5rem;font-size:.75rem;">
-                                        Quitar búsqueda
+                                @if(trim($this->docSearch) !== '' || $this->docStatus !== '')
+                                    <p>No hay documentos que coincidan con los filtros seleccionados.</p>
+                                    <button type="button" wire:click="clearDocumentFilters" class="btn-ghost" style="margin-top:.5rem;font-size:.75rem;">
+                                        Quitar filtros
                                     </button>
                                 @else
                                     <p>Sin documentos de cartera registrados para este cliente.</p>
@@ -839,7 +861,7 @@
         </div>
         @if($docs->hasPages())
         <div class="cv-docs-pagination" wire:key="docs-pagination-{{ $docs->currentPage() }}">
-            {{ $docs->links('pagination::simple-tailwind') }}
+            {{ $docs->links('livewire::simple-tailwind', data: ['scrollTo' => false]) }}
         </div>
         @endif
     </div>

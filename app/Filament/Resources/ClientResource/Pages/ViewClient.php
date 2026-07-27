@@ -45,6 +45,9 @@ class ViewClient extends ViewRecord
     /** Búsqueda rápida en documentos de cartera (número, referencia, tipo). */
     public string $docSearch = '';
 
+    /** Estado seleccionado en el listado de documentos. */
+    public string $docStatus = '';
+
     public function exportPortfolioUrl(): ?string
     {
         $period = $this->latestPortfolioCutDate();
@@ -263,10 +266,27 @@ class ViewClient extends ViewRecord
         $this->resetPage('docs-page');
     }
 
-    public function clearDocSearch(): void
+    public function updatedDocStatus(): void
+    {
+        $this->resetPage('docs-page');
+    }
+
+    public function clearDocumentFilters(): void
     {
         $this->docSearch = '';
+        $this->docStatus = '';
         $this->resetPage('docs-page');
+    }
+
+    /** @return array<string, string> */
+    public function documentStatusOptions(): array
+    {
+        return [
+            'active' => 'Activo',
+            'partial' => 'Parcial',
+            'in_process' => 'En proceso',
+            'paid' => 'Pagado',
+        ];
     }
 
     public function getDocumentsProperty()
@@ -283,6 +303,10 @@ class ViewClient extends ViewRecord
                     ->orWhere('client_reference', 'like', $like)
                     ->orWhere('document_type', 'like', $like);
             });
+        }
+
+        if (array_key_exists($this->docStatus, $this->documentStatusOptions())) {
+            $query->where('status', $this->docStatus);
         }
 
         return $query

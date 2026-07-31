@@ -142,9 +142,8 @@ class ViewClient extends ViewRecord
                 ->label('Volver al drill-down')
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray')
-                ->url(fn (): string => StrategicDashboard::getUrl(['restore_drilldown' => 1]))
-                ->visible(fn (): bool => request()->boolean('from_kpi_drilldown')
-                    && session()->has('strategic_dashboard_drilldown_context')),
+                ->url(fn (): string => $this->kpiDrilldownReturnUrl() ?? '#')
+                ->visible(fn (): bool => $this->kpiDrilldownReturnUrl() !== null),
             Action::make('exportPortfolio')
                 ->label('Exportar cartera')
                 ->icon('heroicon-o-arrow-down-tray')
@@ -154,6 +153,16 @@ class ViewClient extends ViewRecord
                 ->visible(fn (): bool => $this->exportPortfolioUrl() !== null),
             EditAction::make(),
         ];
+    }
+
+    public function kpiDrilldownReturnUrl(): ?string
+    {
+        if (! request()->boolean('from_kpi_drilldown')
+            || ! session()->has('strategic_dashboard_drilldown_context')) {
+            return null;
+        }
+
+        return StrategicDashboard::getUrl(['restore_drilldown' => 1]);
     }
 
     public function mount(int|string $record): void

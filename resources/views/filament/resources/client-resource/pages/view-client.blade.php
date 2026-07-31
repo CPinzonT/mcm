@@ -464,6 +464,7 @@
     $docs     = $this->documents;
     $timeline = $this->timeline;
     $exportPortfolioUrl = $this->exportPortfolioUrl();
+    $kpiDrilldownReturnUrl = $this->kpiDrilldownReturnUrl();
 
     $initials = collect(explode(' ', $c->name))->filter()->take(2)->map(fn($w) => mb_substr($w,0,1))->implode('');
 
@@ -529,6 +530,12 @@
             </div>
         </div>
         <div class="cv-identity-actions">
+            @if($kpiDrilldownReturnUrl)
+                <a href="{{ $kpiDrilldownReturnUrl }}" class="btn-ghost">
+                    <x-heroicon-o-arrow-left style="width:.9rem;height:.9rem"/>
+                    Volver al drill-down
+                </a>
+            @endif
             @if($exportPortfolioUrl)
                 <a href="{{ $exportPortfolioUrl }}" target="_blank" rel="noopener" class="btn-ghost">
                     <x-heroicon-o-arrow-down-tray style="width:.9rem;height:.9rem"/>

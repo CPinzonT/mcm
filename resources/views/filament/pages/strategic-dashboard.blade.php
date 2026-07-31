@@ -153,7 +153,7 @@ body:has(.sd-page) .fi-page-content {
 .sd-filter-bar {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-end;
+    align-items: center;
     gap: .6rem;
     background: var(--mcm-surface);
     border: 1px solid var(--mcm-border);
@@ -161,6 +161,17 @@ body:has(.sd-page) .fi-page-content {
     padding: .75rem 1rem;
     box-shadow: var(--mcm-shadow-soft);
     color: var(--mcm-text);
+}
+.sd-date-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(9rem, 11rem));
+    gap: .3rem .6rem;
+    align-items: end;
+}
+.sd-date-filters .sd-filter-hint { grid-column: 1 / -1; }
+@media (max-width: 600px) {
+    .sd-date-filters { grid-template-columns: 1fr; width: 100%; }
+    .sd-date-filters .sd-filter-hint { grid-column: auto; }
 }
 .sd-filter-col { display: flex; flex-direction: column; gap: .2rem; min-width: 8rem; flex: 1; }
 .sd-filter-col.sd-filter-col--date { min-width: 9rem; max-width: 11rem; flex: 0 1 auto; }
@@ -344,7 +355,7 @@ body:has(.sd-page) .fi-page-content {
 }
 .sd-kpi-document-types { min-width: 9rem; line-height: 1.45; }
 .sd-kpi-document-types div { white-space: nowrap; }
-.sd-kpi--collection-summary { grid-column: span 3; }
+.sd-kpi--collection-summary { grid-column: span 4; }
 .sd-collection-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -373,6 +384,12 @@ body:has(.sd-page) .fi-page-content {
     .sd-kpi--collection-summary { grid-column: span 2; }
     .sd-collection-grid { grid-template-columns: 1fr; }
     .sd-collection-item + .sd-collection-item { border-left: 0; border-top: 1px solid var(--mcm-border); padding-left: 0; padding-top: .55rem; }
+}
+
+/* Dashboard: dos filas completas de filtros en escritorio. */
+@media (min-width: 900px) {
+    .sd-page .sd-filters-grid--dashboard .sd-filter-card--wide { grid-column: span 1; }
+    .sd-page .sd-filters-grid--dashboard .sd-filter-card--score { grid-column: span 2; }
 }
 
 /* ── Score ring ──────────────────────────────────────── */
@@ -539,13 +556,15 @@ body:has(.sd-page) .fi-page-content {
 
     {{-- ═══ FILTER BAR: rango de contabilización + acciones ═══ --}}
     <div class="sd-filter-bar">
-        <div class="sd-filter-col sd-filter-col--date">
-            <label>Desde (contabilización)</label>
-            <input type="date" wire:model.live="dateFrom" class="sd-filter-input">
-        </div>
-        <div class="sd-filter-col sd-filter-col--date">
-            <label>Hasta (contabilización)</label>
-            <input type="date" wire:model.live="dateTo" class="sd-filter-input">
+        <div class="sd-date-filters">
+            <div class="sd-filter-col sd-filter-col--date">
+                <label>Desde (contabilización)</label>
+                <input type="date" wire:model.live="dateFrom" class="sd-filter-input">
+            </div>
+            <div class="sd-filter-col sd-filter-col--date">
+                <label>Hasta (contabilización)</label>
+                <input type="date" wire:model.live="dateTo" class="sd-filter-input">
+            </div>
             <span class="sd-filter-hint" style="font-size:.68rem;color:var(--mcm-muted);margin-top:.2rem;display:block;">
                 Si define «Hasta», los días de mora se calculan a esa fecha; si no, a hoy ({{ \Carbon\Carbon::today()->format('d/m/Y') }}).
             </span>

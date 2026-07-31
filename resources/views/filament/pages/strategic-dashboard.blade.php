@@ -465,6 +465,7 @@ body:has(.sd-page) .fi-page-content {
 .sd-chart-hint { font-size: .65rem; color: var(--mcm-muted); margin: -.35rem 0 .5rem; font-weight: 500; }
 .sd-chart-canvas { height: 15rem; position: relative; cursor: crosshair; }
 .sd-chart-canvas.tall { height: 18rem; }
+.sd-rotation-trend-canvas { height: 20rem; position: relative; margin-top: .75rem; }
 
 /* ── Comparison KPI table ────────────────────────────── */
 .sd-compare-kpis {
@@ -728,6 +729,15 @@ body:has(.sd-page) .fi-page-content {
                 <div class="sd-kpi-value" style="font-size:.78rem;color:var(--mcm-muted);">Sin ventas</div>
                 <div class="sd-kpi-sub">Sin ventas vinculadas en los últimos 12 meses</div>
             @endif
+            <button
+                type="button"
+                class="sd-kpi-drill-link"
+                wire:click="openRotationTrend"
+                wire:loading.attr="disabled"
+                wire:target="openRotationTrend"
+            >
+                Ver variación mes a mes →
+            </button>
         </div>
 
         {{-- 5. % Concentración Top 5 --}}
@@ -858,6 +868,37 @@ body:has(.sd-page) .fi-page-content {
         </div>
 
     </div>
+
+    @if($rotationTrendData !== null)
+        <div
+            class="sd-kpi-drilldown"
+            x-init="$nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'start' }))"
+            wire:key="rotation-trend-drilldown"
+        >
+            <div class="sd-kpi-drilldown-head">
+                <div>
+                    <div class="sd-kpi-drilldown-title">{{ $rotationTrendData['title'] }}</div>
+                    <div class="sd-kpi-drilldown-summary">
+                        Últimos {{ count($rotationTrendData['rows']) }} cortes disponibles ·
+                        {{ $rotationTrendData['formula'] }} · según los filtros activos
+                    </div>
+                </div>
+                <button type="button" class="sd-kpi-drilldown-close" wire:click="closeRotationTrend">
+                    Cerrar
+                </button>
+            </div>
+
+            @if($rotationTrendData['rows'] === [])
+                <div class="sd-kpi-drilldown-summary" style="padding:1rem;">
+                    No hay cortes históricos disponibles para los filtros seleccionados.
+                </div>
+            @else
+                <div class="sd-rotation-trend-canvas">
+                    <canvas x-ref="rotationTrend"></canvas>
+                </div>
+            @endif
+        </div>
+    @endif
 
     @if($kpiDrilldownData !== null)
         @php
@@ -1248,6 +1289,7 @@ document.addEventListener('alpine:init', () => {
 
     Alpine.data('sdDashboard', (initialCharts, livewireId) => ({
         charts: initialCharts,
+        rotationTrend: null,
         livewireId: livewireId,
         _instances: {},
         _themeObserver: null,
@@ -1350,9 +1392,21 @@ document.addEventListener('alpine:init', () => {
                 const data = params?.charts ?? (Array.isArray(params) ? params[0]?.charts : null);
                 if (data) { self.charts = data; self.buildAll(data); }
             });
+            Livewire.on('rotation-trend-updated', (params) => {
+                const data = params?.data ?? (Array.isArray(params) ? params[0]?.data : null);
+                if (data) self.$nextTick(() => self.buildRotationTrend(data));
+            });
+            Livewire.on('rotation-trend-closed', () => {
+                self.rotationTrend = null;
+                if (self._instances.rotationTrend) {
+                    try { self._instances.rotationTrend.destroy(); } catch (e) {}
+                    delete self._instances.rotationTrend;
+                }
+            });
 
             this._themeObserver = new MutationObserver(() => {
                 if (self.charts) self.buildAll(self.charts);
+                if (self.rotationTrend) self.buildRotationTrend(self.rotationTrend);
             });
             this._themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
         },
@@ -1424,6 +1478,78 @@ document.addEventListener('alpine:init', () => {
             } catch(e) {
                 console.warn('MCM chart error [' + ref + ']:', e);
             }
+        },
+
+        buildRotationTrend(raw) {
+            this.rotationTrend = raw;
+            const canvas = this.$refs.rotationTrend;
+            if (!canvas || !raw?.rows?.length) return;
+
+            const t = this.theme();
+            const mc = this.colors();
+            const changes = raw.changes || [];
+            const values = (raw.values || []).map(v => v === null ? null : Number(v));
+            const colors = values.map((_, index) => {
+                if (changes[index] === null || changes[index] === undefined) return mc.blue;
+                return Number(changes[index]) <= 0 ? mc.green : mc.red;
+            });
+            const self = this;
+            const data = {
+                labels: raw.labels || [],
+                datasets: [{
+                    label: 'Rotación (días)',
+                    data: values,
+                    backgroundColor: colors,
+                    borderColor: colors,
+                    borderWidth: 1,
+                    borderRadius: 5,
+                }],
+            };
+
+            if (this._instances.rotationTrend) {
+                try { this._instances.rotationTrend.destroy(); } catch (e) {}
+            }
+            this._instances.rotationTrend = new Chart(canvas, {
+                type: 'bar',
+                data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    layout: this.chartLayoutPadding({ top: 24 }),
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `Rotación: ${Number(ctx.raw).toLocaleString('es-CO', { maximumFractionDigits: 1 })} días`,
+                                afterLabel: ctx => {
+                                    const change = changes[ctx.dataIndex];
+                                    if (change === null || change === undefined) return 'Primer corte disponible';
+                                    const direction = Number(change) <= 0 ? 'mejora' : 'deterioro';
+                                    const sign = Number(change) > 0 ? '+' : '';
+                                    return `Variación: ${sign}${Number(change).toFixed(1)}% (${direction})`;
+                                },
+                            },
+                        },
+                        datalabels: self._hasDatalabels ? {
+                            color: t.text,
+                            anchor: 'end',
+                            align: 'top',
+                            font: { size: 10, weight: '700' },
+                            formatter: value => value === null ? '' : Number(value).toFixed(1) + 'd',
+                        } : false,
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: t.text, font: { size: 10 } } },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: t.grid },
+                            ticks: { color: t.text, callback: value => value + 'd', font: { size: 10 } },
+                            title: { display: true, text: 'Días de cartera', color: t.text },
+                        },
+                    },
+                },
+            });
         },
 
         buildAll(data) {

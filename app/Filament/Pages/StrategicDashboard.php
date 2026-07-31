@@ -10,6 +10,7 @@ use App\Services\Dashboard\ChartService;
 use App\Services\Dashboard\DashboardFilterCascadeService;
 use App\Services\Dashboard\KpiClientDrilldownService;
 use App\Services\Dashboard\KpiService;
+use App\Services\Dashboard\RotationTrendService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -61,6 +62,9 @@ class StrategicDashboard extends Page
     public string $kpiDrilldownUenFilter = '';
 
     public string $kpiDrilldownChannelFilter = '';
+
+    /** @var array<string, mixed>|null */
+    public ?array $rotationTrendData = null;
 
     // ── Comparación ─────────────────────────────────────────────
     public bool   $compareMode     = false;
@@ -310,6 +314,7 @@ class StrategicDashboard extends Page
             $this->activeDateRangeLabel,
         );
         $this->refreshKpiDrilldown();
+        $this->refreshRotationTrend();
         $this->dispatch('charts-updated', charts: $this->charts);
     }
 
@@ -375,6 +380,28 @@ class StrategicDashboard extends Page
             'record' => $clientId,
             'from_kpi_drilldown' => 1,
         ]));
+    }
+
+    public function openRotationTrend(): void
+    {
+        $this->rotationTrendData = app(RotationTrendService::class)
+            ->build($this->dashboardFiltersData());
+        $this->dispatch('rotation-trend-updated', data: $this->rotationTrendData);
+    }
+
+    public function closeRotationTrend(): void
+    {
+        $this->rotationTrendData = null;
+        $this->dispatch('rotation-trend-closed');
+    }
+
+    private function refreshRotationTrend(): void
+    {
+        if ($this->rotationTrendData !== null) {
+            $this->rotationTrendData = app(RotationTrendService::class)
+                ->build($this->dashboardFiltersData());
+            $this->dispatch('rotation-trend-updated', data: $this->rotationTrendData);
+        }
     }
 
     private function refreshKpiDrilldown(): void

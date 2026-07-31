@@ -293,6 +293,25 @@ body:has(.sd-page) .fi-page-content {
     font-weight: 700;
     cursor: pointer;
 }
+.sd-kpi-drilldown-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .6rem;
+    padding: .7rem 1rem;
+    border-bottom: 1px solid var(--mcm-border);
+    background: var(--mcm-surface-soft);
+}
+.sd-kpi-drilldown-filter { min-width: 11rem; }
+.sd-kpi-drilldown-filter label {
+    display: block;
+    margin-bottom: .25rem;
+    color: var(--mcm-muted);
+    font-size: .64rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.sd-kpi-drilldown-filter .sd-filter-input { width: 100%; }
 .sd-kpi-drilldown-table-wrap { max-height: 28rem; overflow: auto; }
 .sd-kpi-drilldown-table { width: 100%; border-collapse: collapse; font-size: .7rem; }
 .sd-kpi-drilldown-table th {
@@ -317,6 +336,14 @@ body:has(.sd-page) .fi-page-content {
 .sd-kpi-drilldown-table .is-number { text-align: right; white-space: nowrap; }
 .sd-kpi-client-link { color: var(--mcm-accent); font-weight: 800; text-decoration: none; }
 .sd-kpi-client-link:hover { text-decoration: underline; }
+.sd-kpi-client-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+.sd-kpi-document-types { min-width: 9rem; line-height: 1.45; }
+.sd-kpi-document-types div { white-space: nowrap; }
 .sd-kpi--collection-summary { grid-column: span 3; }
 .sd-collection-grid {
     display: grid;
@@ -689,6 +716,15 @@ body:has(.sd-page) .fi-page-content {
             <div class="sd-kpi-label">% Concentración Top 5</div>
             <div class="sd-kpi-value {{ $concClass }}">{{ number_format($k['conc_top5'], 1, ',', '.') }}%</div>
             <div class="sd-kpi-sub">Participación 5 clientes mayores</div>
+            <button
+                type="button"
+                class="sd-kpi-drill-link"
+                wire:click="openKpiDrilldown('concentration_top5')"
+                wire:loading.attr="disabled"
+                wire:target="openKpiDrilldown"
+            >
+                Ver Top 5 por cliente →
+            </button>
         </div>
 
         {{-- 6. % Dependencia Cliente Mayor --}}
@@ -829,6 +865,32 @@ body:has(.sd-page) .fi-page-content {
                 </button>
             </div>
 
+            <div class="sd-kpi-drilldown-filters">
+                <div class="sd-kpi-drilldown-filter">
+                    <label for="kpi-drill-uen">UEN</label>
+                    <select id="kpi-drill-uen" wire:model.live="kpiDrilldownUenFilter" class="sd-filter-input">
+                        <option value="">Todas las UEN</option>
+                        @foreach($drill['uen_options'] as $uen)
+                            <option value="{{ $uen }}">{{ $uen }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="sd-kpi-drilldown-filter">
+                    <label for="kpi-drill-channel">Canal</label>
+                    <select id="kpi-drill-channel" wire:model.live="kpiDrilldownChannelFilter" class="sd-filter-input">
+                        <option value="">Todos los canales</option>
+                        @foreach($drill['channel_options'] as $channel)
+                            <option value="{{ $channel }}">{{ $channel }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @if($kpiDrilldownUenFilter !== '' || $kpiDrilldownChannelFilter !== '')
+                    <button type="button" class="sd-kpi-drilldown-close" wire:click="clearKpiDrilldownFilters">
+                        Limpiar filtros
+                    </button>
+                @endif
+            </div>
+
             @if($drill['rows'] === [])
                 <div class="sd-kpi-drilldown-summary" style="padding:1rem;">
                     No hay clientes que cumplan este indicador con los filtros actuales.
@@ -840,10 +902,12 @@ body:has(.sd-page) .fi-page-content {
                             <tr>
                                 <th>Cliente</th>
                                 <th>NIT</th>
-                                <th>UEN / Canal</th>
+                                <th>UEN</th>
+                                <th>Canal</th>
+                                <th>Tipo de documento</th>
                                 <th class="is-number">Documentos</th>
                                 <th class="is-number">{{ $drill['amount_label'] }}</th>
-                                @if($drill['type'] !== 'negative')
+                                @if(!in_array($drill['type'], ['negative', 'concentration_top5'], true))
                                     <th class="is-number">Mora máxima</th>
                                 @endif
                                 <th class="is-number">Participación</th>
@@ -854,28 +918,40 @@ body:has(.sd-page) .fi-page-content {
                             @foreach($drill['rows'] as $row)
                                 <tr>
                                     <td>
-                                        <a
-                                            class="sd-kpi-client-link"
-                                            href="{{ \App\Filament\Resources\ClientResource::getUrl('view', ['record' => $row['client_id']]) }}"
+                                        <button
+                                            type="button"
+                                            class="sd-kpi-client-link sd-kpi-client-button"
+                                            wire:click="openKpiDrilldownClient({{ $row['client_id'] }})"
+                                            wire:loading.attr="disabled"
                                         >
                                             {{ $row['client'] ?: 'Cliente #' . $row['client_id'] }}
-                                        </a>
+                                        </button>
                                     </td>
                                     <td>{{ $row['nit'] ?: '—' }}</td>
-                                    <td>{{ $row['uen'] ?: '—' }} / {{ $row['channel'] ?: '—' }}</td>
+                                    <td>{{ $row['uen'] ?: '—' }}</td>
+                                    <td>{{ $row['channel'] ?: '—' }}</td>
+                                    <td class="sd-kpi-document-types">
+                                        @forelse($row['document_types'] as $documentType)
+                                            <div>{{ $documentType['type'] }} ({{ number_format($documentType['documents'], 0, ',', '.') }})</div>
+                                        @empty
+                                            —
+                                        @endforelse
+                                    </td>
                                     <td class="is-number">{{ number_format($row['documents'], 0, ',', '.') }}</td>
                                     <td class="is-number">${{ number_format($row['amount'], 0, ',', '.') }}</td>
-                                    @if($drill['type'] !== 'negative')
+                                    @if(!in_array($drill['type'], ['negative', 'concentration_top5'], true))
                                         <td class="is-number">{{ number_format($row['max_days_overdue'], 0, ',', '.') }} días</td>
                                     @endif
                                     <td class="is-number">{{ number_format($row['share_pct'], 1, ',', '.') }}%</td>
                                     <td>
-                                        <a
-                                            class="sd-kpi-client-link"
-                                            href="{{ \App\Filament\Resources\ClientResource::getUrl('view', ['record' => $row['client_id']]) }}"
+                                        <button
+                                            type="button"
+                                            class="sd-kpi-client-link sd-kpi-client-button"
+                                            wire:click="openKpiDrilldownClient({{ $row['client_id'] }})"
+                                            wire:loading.attr="disabled"
                                         >
                                             Ver ficha
-                                        </a>
+                                        </button>
                                     </td>
                                 </tr>
                             @endforeach

@@ -15,7 +15,7 @@ class KpiClientDrilldownService
     use AppliesOperativePortfolioDocuments;
     use AppliesPortfolioPeriodCut;
 
-    private const ALLOWED_TYPES = ['critical', 'overdue_documents', 'negative'];
+    private const ALLOWED_TYPES = ['critical', 'overdue_documents', 'negative', 'concentration_top5'];
 
     /**
      * @return array{
@@ -23,7 +23,12 @@ class KpiClientDrilldownService
      *   total_amount:float,rows:array<int,array<string,mixed>>
      * }
      */
-    public function build(DashboardFiltersData $filters, string $type): array
+    public function build(
+        DashboardFiltersData $filters,
+        string $type,
+        ?string $uenFilter = null,
+        ?string $channelFilter = null,
+    ): array
     {
         if (! in_array($type, self::ALLOWED_TYPES, true)) {
             throw new \InvalidArgumentException("Drill-down KPI no soportado: {$type}");
@@ -31,9 +36,34 @@ class KpiClientDrilldownService
 
         $query = $this->baseActiveQuery($filters);
         $this->applyIndicatorScope($query, $filters, $type);
+
+        if ($type === 'concentration_top5') {
+            $topClientIds = (clone $query)
+                ->select('pd.client_id')
+                ->selectRaw('SUM(pd.pending_amount) as total')
+                ->groupBy('pd.client_id')
+                ->orderByDesc('total')
+                ->limit(5)
+                ->pluck('pd.client_id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all();
+
+            $query->whereIn('pd.client_id', $topClientIds);
+        }
+
+        $uenOptions = $this->dimensionOptions(clone $query, 'c.uen');
+        $channelOptions = $this->dimensionOptions(clone $query, 'c.channel');
+
+        if ($uenFilter !== null && trim($uenFilter) !== '') {
+            $query->whereRaw('TRIM(c.uen) = ?', [trim($uenFilter)]);
+        }
+        if ($channelFilter !== null && trim($channelFilter) !== '') {
+            $query->whereRaw('TRIM(c.channel) = ?', [trim($channelFilter)]);
+        }
+
         [$daysSql, $daysBindings] = $this->liveDaysOverdueBindings($filters);
 
-        $rows = $query
+        $rows = (clone $query)
             ->select([
                 'c.id as client_id',
                 'c.name as client',
@@ -48,6 +78,25 @@ class KpiClientDrilldownService
             ->orderByRaw($type === 'negative' ? 'SUM(pd.pending_amount) ASC' : 'SUM(pd.pending_amount) DESC')
             ->get();
 
+        $documentTypesByClient = (clone $query)
+            ->select([
+                'pd.client_id',
+                'pd.document_type',
+                DB::raw('COUNT(pd.id) as documents'),
+            ])
+            ->whereNotNull('pd.document_type')
+            ->whereRaw("TRIM(pd.document_type) <> ''")
+            ->groupBy('pd.client_id', 'pd.document_type')
+            ->orderBy('pd.document_type')
+            ->get()
+            ->groupBy('client_id')
+            ->map(static fn ($items): array => $items
+                ->map(static fn ($item): array => [
+                    'type' => trim((string) $item->document_type),
+                    'documents' => (int) $item->documents,
+                ])
+                ->all());
+
         $totalDocuments = (int) $rows->sum('documents');
         $totalAmount = (float) $rows->sum(
             static fn ($row) => $type === 'negative'
@@ -56,7 +105,7 @@ class KpiClientDrilldownService
         );
 
         $mappedRows = $rows
-            ->map(static function ($row) use ($type, $totalAmount): array {
+            ->map(static function ($row) use ($type, $totalAmount, $documentTypesByClient): array {
                 $amount = $type === 'negative'
                     ? abs((float) $row->amount)
                     : (float) $row->amount;
@@ -71,6 +120,7 @@ class KpiClientDrilldownService
                     'amount' => $amount,
                     'max_days_overdue' => (int) ($row->max_days_overdue ?? 0),
                     'share_pct' => $totalAmount > 0 ? round($amount / $totalAmount * 100, 1) : 0.0,
+                    'document_types' => $documentTypesByClient->get($row->client_id, []),
                 ];
             })
             ->all();
@@ -81,11 +131,18 @@ class KpiClientDrilldownService
                 'critical' => 'Cartera crítica por cliente (>90 días)',
                 'overdue_documents' => 'Documentos vencidos por cliente',
                 'negative' => 'Saldos negativos por cliente',
+                'concentration_top5' => 'Concentración — Top 5 clientes por saldo',
             },
-            'amount_label' => $type === 'negative' ? 'Saldo negativo' : 'Saldo involucrado',
+            'amount_label' => match ($type) {
+                'negative' => 'Saldo negativo',
+                'concentration_top5' => 'Saldo total',
+                default => 'Saldo involucrado',
+            },
             'total_clients' => count($mappedRows),
             'total_documents' => $totalDocuments,
             'total_amount' => $totalAmount,
+            'uen_options' => $uenOptions,
+            'channel_options' => $channelOptions,
             'rows' => $mappedRows,
         ];
     }
@@ -95,6 +152,10 @@ class KpiClientDrilldownService
         DashboardFiltersData $filters,
         string $type,
     ): void {
+        if ($type === 'concentration_top5') {
+            return;
+        }
+
         if ($type === 'negative') {
             $query->where('pd.pending_amount', '<', 0);
 
@@ -168,5 +229,19 @@ class KpiClientDrilldownService
         if ($single !== null && trim($single) !== '') {
             $query->whereRaw("TRIM({$column}) = ?", [trim($single)]);
         }
+    }
+
+    /** @return string[] */
+    private function dimensionOptions(Builder $query, string $column): array
+    {
+        return $query
+            ->whereNotNull($column)
+            ->whereRaw("TRIM({$column}) <> ''")
+            ->selectRaw("TRIM({$column}) as value")
+            ->distinct()
+            ->orderBy('value')
+            ->pluck('value')
+            ->map(static fn ($value): string => trim((string) $value))
+            ->all();
     }
 }

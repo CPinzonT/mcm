@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ClientResource\Pages;
 
+use App\Filament\Pages\StrategicDashboard;
 use App\Filament\Resources\ClientResource;
 use App\Models\CollectionDetail;
 use App\Models\ManagementLog;
@@ -137,6 +138,13 @@ class ViewClient extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('backToKpiDrilldown')
+                ->label('Volver al drill-down')
+                ->icon('heroicon-o-arrow-left')
+                ->color('gray')
+                ->url(fn (): string => StrategicDashboard::getUrl(['restore_drilldown' => 1]))
+                ->visible(fn (): bool => request()->boolean('from_kpi_drilldown')
+                    && session()->has('strategic_dashboard_drilldown_context')),
             Action::make('exportPortfolio')
                 ->label('Exportar cartera')
                 ->icon('heroicon-o-arrow-down-tray')

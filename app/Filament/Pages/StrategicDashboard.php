@@ -58,6 +58,10 @@ class StrategicDashboard extends Page
     /** @var array<string, mixed>|null */
     public ?array $kpiDrilldownData = null;
 
+    public string $kpiDrilldownUenFilter = '';
+
+    public string $kpiDrilldownChannelFilter = '';
+
     // ── Comparación ─────────────────────────────────────────────
     public bool   $compareMode     = false;
     public string $compareType     = 'period';
@@ -67,7 +71,33 @@ class StrategicDashboard extends Page
     public ?string $compareValueB  = null;
     public bool   $comparePrevious = false;
 
-    public function mount(): void {}
+    public function mount(): void
+    {
+        if (! request()->boolean('restore_drilldown')) {
+            return;
+        }
+
+        $context = session()->get('strategic_dashboard_drilldown_context');
+        if (! is_array($context)) {
+            return;
+        }
+
+        $this->selectedChannels = (array) ($context['channels'] ?? []);
+        $this->selectedUens = (array) ($context['uens'] ?? []);
+        $this->selectedRegionals = (array) ($context['regionals'] ?? []);
+        $this->selectedAdvisors = (array) ($context['advisors'] ?? []);
+        $this->selectedRiskLevels = (array) ($context['risk_levels'] ?? []);
+        $this->selectedDocumentTypes = (array) ($context['document_types'] ?? []);
+        $this->clientId = $context['client_id'] ?? null;
+        $this->dateFrom = $context['date_from'] ?? null;
+        $this->dateTo = $context['date_to'] ?? null;
+        $this->kpiDrilldownType = $context['drilldown_type'] ?? null;
+        $this->kpiDrilldownUenFilter = (string) ($context['drilldown_uen'] ?? '');
+        $this->kpiDrilldownChannelFilter = (string) ($context['drilldown_channel'] ?? '');
+
+        $this->normalizeAdvisorIds();
+        $this->refreshKpiDrilldown();
+    }
 
     /**
      * Livewire puede hidratar IDs como string; normalizamos para que la cascada y in_array(..., true) sean coherentes.
@@ -286,6 +316,8 @@ class StrategicDashboard extends Page
     public function openKpiDrilldown(string $type): void
     {
         $this->kpiDrilldownType = $type;
+        $this->kpiDrilldownUenFilter = '';
+        $this->kpiDrilldownChannelFilter = '';
         $this->refreshKpiDrilldown();
         $this->dispatch('kpi-drilldown-opened');
     }
@@ -294,6 +326,55 @@ class StrategicDashboard extends Page
     {
         $this->kpiDrilldownType = null;
         $this->kpiDrilldownData = null;
+        $this->kpiDrilldownUenFilter = '';
+        $this->kpiDrilldownChannelFilter = '';
+    }
+
+    public function updatedKpiDrilldownUenFilter(): void
+    {
+        $this->refreshKpiDrilldown();
+    }
+
+    public function updatedKpiDrilldownChannelFilter(): void
+    {
+        $this->refreshKpiDrilldown();
+    }
+
+    public function clearKpiDrilldownFilters(): void
+    {
+        $this->kpiDrilldownUenFilter = '';
+        $this->kpiDrilldownChannelFilter = '';
+        $this->refreshKpiDrilldown();
+    }
+
+    public function openKpiDrilldownClient(int $clientId): void
+    {
+        $isVisibleClient = collect($this->kpiDrilldownData['rows'] ?? [])
+            ->contains(static fn (array $row): bool => (int) ($row['client_id'] ?? 0) === $clientId);
+
+        if (! $isVisibleClient || $this->kpiDrilldownType === null) {
+            return;
+        }
+
+        session()->put('strategic_dashboard_drilldown_context', [
+            'channels' => $this->selectedChannels,
+            'uens' => $this->selectedUens,
+            'regionals' => $this->selectedRegionals,
+            'advisors' => $this->selectedAdvisors,
+            'risk_levels' => $this->selectedRiskLevels,
+            'document_types' => $this->selectedDocumentTypes,
+            'client_id' => $this->clientId,
+            'date_from' => $this->dateFrom,
+            'date_to' => $this->dateTo,
+            'drilldown_type' => $this->kpiDrilldownType,
+            'drilldown_uen' => $this->kpiDrilldownUenFilter,
+            'drilldown_channel' => $this->kpiDrilldownChannelFilter,
+        ]);
+
+        $this->redirect(ClientResource::getUrl('view', [
+            'record' => $clientId,
+            'from_kpi_drilldown' => 1,
+        ]));
     }
 
     private function refreshKpiDrilldown(): void
@@ -303,7 +384,12 @@ class StrategicDashboard extends Page
         }
 
         $this->kpiDrilldownData = app(KpiClientDrilldownService::class)
-            ->build($this->dashboardFiltersData(), $this->kpiDrilldownType);
+            ->build(
+                $this->dashboardFiltersData(),
+                $this->kpiDrilldownType,
+                $this->kpiDrilldownUenFilter,
+                $this->kpiDrilldownChannelFilter,
+            );
     }
 
     public function resetFilters(): void

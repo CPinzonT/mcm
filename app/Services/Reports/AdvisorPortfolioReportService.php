@@ -17,9 +17,14 @@ class AdvisorPortfolioReportService
     /**
      * @return array<int, object>
      */
-    public function advisorSummaries(string $periodFrom = '', string $periodTo = '', string $uen = ''): array
+    public function advisorSummaries(
+        string $periodFrom = '',
+        string $periodTo = '',
+        string $uen = '',
+        string $channel = '',
+    ): array
     {
-        $portfolioRows = $this->portfolioBase($periodFrom, $periodTo, $uen)
+        $portfolioRows = $this->portfolioBase($periodFrom, $periodTo, $uen, $channel)
             ->leftJoin('advisors as a', 'a.id', '=', 'pd.advisor_id')
             ->select([
                 'pd.advisor_id',
@@ -33,7 +38,7 @@ class AdvisorPortfolioReportService
             ->orderByDesc('saldo_total')
             ->get();
 
-        $managementCounts = $this->managementBase($periodFrom, $periodTo, $uen)
+        $managementCounts = $this->managementBase($periodFrom, $periodTo, $uen, $channel)
             ->select('ml.advisor_id', DB::raw('COUNT(*) as total'))
             ->groupBy('ml.advisor_id')
             ->get()
@@ -63,8 +68,9 @@ class AdvisorPortfolioReportService
         string $periodFrom = '',
         string $periodTo = '',
         string $uen = '',
+        string $channel = '',
     ): array {
-        $query = $this->portfolioBase($periodFrom, $periodTo, $uen);
+        $query = $this->portfolioBase($periodFrom, $periodTo, $uen, $channel);
         $this->applyAdvisor($query, $advisorKey, 'pd.advisor_id');
 
         $clients = $query
@@ -86,7 +92,7 @@ class AdvisorPortfolioReportService
         $managementCounts = collect();
 
         if ($clientIds !== []) {
-            $managementQuery = $this->managementBase($periodFrom, $periodTo, $uen)
+            $managementQuery = $this->managementBase($periodFrom, $periodTo, $uen, $channel)
                 ->whereIn('ml.client_id', $clientIds);
             $this->applyAdvisor($managementQuery, $advisorKey, 'ml.advisor_id');
 
@@ -122,8 +128,9 @@ class AdvisorPortfolioReportService
         string $periodFrom = '',
         string $periodTo = '',
         string $uen = '',
+        string $channel = '',
     ): array {
-        $query = $this->portfolioBase($periodFrom, $periodTo, $uen)
+        $query = $this->portfolioBase($periodFrom, $periodTo, $uen, $channel)
             ->where('pd.client_id', $clientId);
         $this->applyAdvisor($query, $advisorKey, 'pd.advisor_id');
 
@@ -150,6 +157,7 @@ class AdvisorPortfolioReportService
             $periodFrom,
             $periodTo,
             $uen,
+            $channel,
         );
 
         $rows = $documents
@@ -182,6 +190,7 @@ class AdvisorPortfolioReportService
             $periodFrom,
             $periodTo,
             $uen,
+            $channel,
         );
 
         if ($generalLogs->isNotEmpty()) {
@@ -215,8 +224,9 @@ class AdvisorPortfolioReportService
         string $periodFrom = '',
         string $periodTo = '',
         string $uen = '',
+        string $channel = '',
     ): array {
-        $query = $this->managementBase($periodFrom, $periodTo, $uen)
+        $query = $this->managementBase($periodFrom, $periodTo, $uen, $channel)
             ->where('ml.client_id', $clientId);
         $this->applyAdvisor($query, $advisorKey, 'ml.advisor_id');
 
@@ -263,8 +273,9 @@ class AdvisorPortfolioReportService
         string $periodTo = '',
         string $uen = '',
         ?string $advisorKey = null,
+        string $channel = '',
     ): Builder {
-        $query = $this->portfolioBase($periodFrom, $periodTo, $uen)
+        $query = $this->portfolioBase($periodFrom, $periodTo, $uen, $channel)
             ->leftJoin('advisors as a', 'a.id', '=', 'pd.advisor_id')
             ->select([
                 'pd.id',
@@ -302,8 +313,9 @@ class AdvisorPortfolioReportService
         string $periodTo = '',
         string $uen = '',
         ?string $advisorKey = null,
+        string $channel = '',
     ): array {
-        $portfolioQuery = $this->portfolioBase($periodFrom, $periodTo, $uen)
+        $portfolioQuery = $this->portfolioBase($periodFrom, $periodTo, $uen, $channel)
             ->leftJoin('advisors as a', 'a.id', '=', 'pd.advisor_id');
 
         if ($advisorKey !== null && $advisorKey !== '') {
@@ -336,7 +348,7 @@ class AdvisorPortfolioReportService
             ->orderByDesc('saldo_total')
             ->get();
 
-        $managementQuery = $this->managementBase($periodFrom, $periodTo, $uen);
+        $managementQuery = $this->managementBase($periodFrom, $periodTo, $uen, $channel);
         if ($advisorKey !== null && $advisorKey !== '') {
             $this->applyAdvisor($managementQuery, $advisorKey, 'ml.advisor_id');
         }
@@ -368,8 +380,9 @@ class AdvisorPortfolioReportService
         string $periodTo = '',
         string $uen = '',
         ?string $advisorKey = null,
+        string $channel = '',
     ): Builder {
-        $query = $this->managementBase($periodFrom, $periodTo, $uen)
+        $query = $this->managementBase($periodFrom, $periodTo, $uen, $channel)
             ->leftJoin('advisors as a', 'a.id', '=', 'ml.advisor_id')
             ->leftJoin('portfolio_documents as pd', 'pd.id', '=', 'ml.portfolio_document_id')
             ->select([
@@ -403,7 +416,12 @@ class AdvisorPortfolioReportService
         return $query;
     }
 
-    private function portfolioBase(string $periodFrom, string $periodTo, string $uen): Builder
+    private function portfolioBase(
+        string $periodFrom,
+        string $periodTo,
+        string $uen,
+        string $channel,
+    ): Builder
     {
         $query = DB::table('portfolio_documents as pd')
             ->join('clients as c', 'c.id', '=', 'pd.client_id')
@@ -426,11 +444,19 @@ class AdvisorPortfolioReportService
         if ($uen !== '') {
             $query->where('c.uen', $uen);
         }
+        if ($channel !== '') {
+            $query->where('c.channel', $channel);
+        }
 
         return $query;
     }
 
-    private function managementBase(string $periodFrom, string $periodTo, string $uen): Builder
+    private function managementBase(
+        string $periodFrom,
+        string $periodTo,
+        string $uen,
+        string $channel,
+    ): Builder
     {
         $query = DB::table('management_logs as ml')
             ->join('clients as c', 'c.id', '=', 'ml.client_id')
@@ -484,6 +510,9 @@ class AdvisorPortfolioReportService
         if ($uen !== '') {
             $query->where('c.uen', $uen);
         }
+        if ($channel !== '') {
+            $query->where('c.channel', $channel);
+        }
 
         return $query;
     }
@@ -499,12 +528,13 @@ class AdvisorPortfolioReportService
         string $periodFrom,
         string $periodTo,
         string $uen,
+        string $channel,
     ): Collection {
         if ($documentIds === []) {
             return collect();
         }
 
-        $query = $this->managementBase($periodFrom, $periodTo, $uen)
+        $query = $this->managementBase($periodFrom, $periodTo, $uen, $channel)
             ->where('ml.client_id', $clientId)
             ->whereIn('ml.portfolio_document_id', $documentIds)
             ->select([
@@ -532,8 +562,9 @@ class AdvisorPortfolioReportService
         string $periodFrom,
         string $periodTo,
         string $uen,
+        string $channel,
     ): Collection {
-        $query = $this->managementBase($periodFrom, $periodTo, $uen)
+        $query = $this->managementBase($periodFrom, $periodTo, $uen, $channel)
             ->where('ml.client_id', $clientId)
             ->whereNull('ml.portfolio_document_id')
             ->select(['ml.id', 'ml.type', 'ml.subject', 'ml.contact_date', 'ml.contact_time'])

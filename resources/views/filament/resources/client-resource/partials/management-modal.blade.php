@@ -1,5 +1,5 @@
 @php
-    $c = $this->record;
+    $c = $this->managementModalClient();
 @endphp
 <div class="cv-mgmt-backdrop" wire:click.self="closeManagementModal">
     <div class="cv-mgmt-modal" role="dialog" aria-modal="true" aria-labelledby="cv-mgmt-title">
@@ -7,7 +7,7 @@
             <div>
                 <p class="cv-mgmt-kicker">Registrar gestión / compromiso</p>
                 <h2 id="cv-mgmt-title" class="cv-mgmt-title">{{ $mgmtDocLabel }}</h2>
-                <p class="cv-mgmt-sub">{{ $c->name }} · UEN {{ $c->uen ?? '—' }} · {{ $c->channel ?? '—' }}</p>
+                <p class="cv-mgmt-sub">{{ $c?->name ?? 'Cliente' }} · UEN {{ $c?->uen ?? '—' }} · {{ $c?->channel ?? '—' }}</p>
             </div>
             <button type="button" class="btn-ghost" wire:click="closeManagementModal" aria-label="Cerrar">✕</button>
         </div>

@@ -49,6 +49,30 @@ class ManagementLogWriter
         ]);
     }
 
+    public static function createForClient(Client $client, ?int $advisorId, array $data): ManagementLog
+    {
+        $hasPromise = ! empty($data['promised_date']) || ! empty($data['promised_amount']);
+
+        return ManagementLog::create([
+            'client_id' => $client->id,
+            'portfolio_document_id' => null,
+            'advisor_id' => $advisorId,
+            'user_id' => Auth::id(),
+            'type' => $data['type'],
+            'subject' => $data['subject'],
+            'description' => $data['description'],
+            'result' => $data['result'] ?? null,
+            'contact_date' => $data['contact_date'],
+            'contact_time' => self::normalizeTime($data['contact_time'] ?? null),
+            'uen' => $client->uen,
+            'channel' => $client->channel,
+            'follow_up_date' => $data['follow_up_date'] ?? null,
+            'promised_amount' => $data['promised_amount'] ?? null,
+            'promised_date' => $data['promised_date'] ?? null,
+            'status' => $hasPromise ? 'pending' : 'open',
+        ]);
+    }
+
     private static function normalizeTime(?string $time): string
     {
         if (! $time) {

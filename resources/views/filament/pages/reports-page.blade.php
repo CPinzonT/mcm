@@ -153,6 +153,52 @@
     text-decoration: none;
 }
 .reports-page .rp-row-export:hover { text-decoration: underline; }
+.reports-page .rp-management-btn {
+    margin-top: .3rem;
+    padding: .2rem .45rem;
+    border: 1px solid var(--mcm-border);
+    border-radius: 6px;
+    background: var(--mcm-surface);
+    color: var(--mcm-accent);
+    cursor: pointer;
+    font-size: .64rem;
+    font-weight: 700;
+}
+.reports-page .rp-management-btn:hover { background: var(--mcm-accent-soft); }
+.reports-page .cv-mgmt-backdrop {
+    align-items: center;
+    background: rgba(15, 23, 42, .45);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 1rem;
+    position: fixed;
+    z-index: 60;
+}
+.reports-page .cv-mgmt-modal {
+    background: var(--mcm-surface);
+    border: 1px solid var(--mcm-border);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, .18);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    max-width: 42rem;
+    overflow: hidden;
+    width: 100%;
+}
+.reports-page .cv-mgmt-head { align-items: flex-start; border-bottom: 1px solid var(--mcm-border); display: flex; gap: 1rem; justify-content: space-between; padding: 1rem 1.25rem; }
+.reports-page .cv-mgmt-kicker { color: var(--mcm-muted); font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.reports-page .cv-mgmt-title { color: var(--mcm-text-strong); font-size: 1.05rem; font-weight: 700; margin-top: .2rem; }
+.reports-page .cv-mgmt-sub { color: var(--mcm-muted); font-size: .76rem; margin-top: .25rem; }
+.reports-page .cv-mgmt-body { overflow: auto; padding: 1rem 1.25rem; }
+.reports-page .cv-mgmt-types { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .85rem; }
+.reports-page .cv-mgmt-type { background: var(--mcm-surface); border: 1px solid var(--mcm-border); border-radius: 999px; color: var(--mcm-muted); cursor: pointer; font-size: .72rem; font-weight: 600; padding: .28rem .65rem; }
+.reports-page .cv-mgmt-type.active { background: var(--mcm-accent-soft); border-color: var(--mcm-accent); color: var(--mcm-accent-strong); }
+.reports-page .cv-mgmt-grid { display: grid; gap: .65rem; grid-template-columns: 1fr 1fr; }
+.reports-page .cv-mgmt-full { grid-column: 1 / -1; }
+.reports-page .cv-mgmt-foot { border-top: 1px solid var(--mcm-border); display: flex; gap: .5rem; justify-content: flex-end; padding: .85rem 1.25rem; }
+.reports-page .cv-mgmt-error { color: var(--mcm-red); font-size: .72rem; margin-top: .2rem; }
 
 @media (max-width: 1200px) { .reports-page .rp-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
@@ -210,6 +256,7 @@ $hasGenerated = $currentLabel && isset($this->rows);
             <div><p class="filter-label">Período hasta</p><input type="month" wire:model="periodTo" class="filter-input"/></div>
             @endif
             <div><p class="filter-label">UEN</p><select wire:model.live="uen" class="filter-input"><option value="">Todas</option>@foreach($this->uenOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
+            <div><p class="filter-label">Canal</p><select wire:model.live="channel" class="filter-input"><option value="">Todos</option>@foreach($this->channelOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
             @if($isTraceability)
             <div>
                 <p class="filter-label">Cliente</p>
@@ -222,7 +269,6 @@ $hasGenerated = $currentLabel && isset($this->rows);
             </div>
             @endif
             @if($isActa)
-            <div><p class="filter-label">Canal</p><select wire:model="channel" class="filter-input"><option value="">Todos</option>@foreach($this->channelOptions as $v => $l)<option value="{{ $v }}">{{ $l }}</option>@endforeach</select></div>
             <div><p class="filter-label">Hora desde (opc.)</p><input type="time" wire:model="timeFrom" class="filter-input"/></div>
             <div><p class="filter-label">Hora hasta (opc.)</p><input type="time" wire:model="timeTo" class="filter-input"/></div>
             @endif
@@ -327,7 +373,8 @@ $hasGenerated = $currentLabel && isset($this->rows);
                                         <tr>
                                             <th>Cliente</th>
                                             <th>NIT</th>
-                                            <th>UEN / Canal</th>
+                                            <th>UEN</th>
+                                            <th>Canal</th>
                                             <th>Documentos</th>
                                             <th>Gestiones</th>
                                             <th>Saldo total</th>
@@ -347,12 +394,17 @@ $hasGenerated = $currentLabel && isset($this->rows);
                                                     <span class="rp-drill-caret">{{ $clientExpanded ? '▼' : '▶' }}</span>
                                                     {{ $client['client'] }}
                                                 </button>
+                                                <div>
+                                                    <button type="button"
+                                                            class="rp-management-btn"
+                                                            wire:click='openManagementModal(@json($advisorKey), {{ $clientId }})'>
+                                                        Registrar gestión general
+                                                    </button>
+                                                </div>
                                             </td>
                                             <td>{{ $client['nit'] ?: '—' }}</td>
-                                            <td>
-                                                {{ $client['uen'] ?: '—' }}
-                                                <div class="rp-muted">{{ $client['channel'] ?: 'Sin canal' }}</div>
-                                            </td>
+                                            <td>{{ $client['uen'] ?: '—' }}</td>
+                                            <td>{{ $client['channel'] ?: '—' }}</td>
                                             <td>{{ number_format($client['documentos'], 0, ',', '.') }}</td>
                                             <td>{{ number_format($client['gestiones'], 0, ',', '.') }}</td>
                                             <td>${{ number_format($client['saldo_total'], 0, ',', '.') }}</td>
@@ -361,7 +413,7 @@ $hasGenerated = $currentLabel && isset($this->rows);
 
                                         @if($clientExpanded)
                                         <tr wire:key="client-documents-{{ $clientStateKey }}">
-                                            <td colspan="7" class="rp-level-documents">
+                                            <td colspan="8" class="rp-level-documents">
                                                 <table class="rp-drill-table">
                                                     <thead>
                                                         <tr>
@@ -405,6 +457,11 @@ $hasGenerated = $currentLabel && isset($this->rows);
                                                             <td>
                                                                 {{ number_format($document['management_count'], 0, ',', '.') }}
                                                                 <div class="rp-muted">{{ $document['last_management'] ?: 'Sin gestiones' }}</div>
+                                                                <button type="button"
+                                                                        class="rp-management-btn"
+                                                                        wire:click='openManagementModal(@json($advisorKey), {{ $clientId }}, {{ $document['document_id'] ?? 'null' }})'>
+                                                                    Registrar gestión
+                                                                </button>
                                                             </td>
                                                         </tr>
 
@@ -459,7 +516,7 @@ $hasGenerated = $currentLabel && isset($this->rows);
                                         </tr>
                                         @endif
                                         @empty
-                                        <tr><td colspan="7" class="rp-muted">Sin clientes asignados en la cartera activa.</td></tr>
+                                        <tr><td colspan="8" class="rp-muted">Sin clientes asignados en la cartera activa.</td></tr>
                                         @endforelse
                                     </tbody>
                                 </table>
@@ -499,6 +556,10 @@ $hasGenerated = $currentLabel && isset($this->rows);
         </div>
         @endif
     </div>
+
+    @if($showMgmtModal)
+        @include('filament.resources.client-resource.partials.management-modal')
+    @endif
 </div>
 
 </x-filament-panels::page>

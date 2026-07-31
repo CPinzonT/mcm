@@ -199,6 +199,7 @@ class ExportService
         string $periodTo = '',
         string $uen = '',
         ?string $advisorKey = null,
+        string $channel = '',
     ): StreamedResponse {
         $filename = 'cartera_gestion_asesor_' . now()->format('Ymd_His') . '.xlsx';
         $tmpPath = tempnam(sys_get_temp_dir(), 'advisor_report_') . '.xlsx';
@@ -211,7 +212,7 @@ class ExportService
         $writer->addRow(Row::fromValues([
             'Asesor', 'Clientes', 'Documentos', 'Gestiones', 'Saldo total', 'Saldo vencido', '% vencido',
         ]));
-        $advisorRows = $report->advisorSummaries($periodFrom, $periodTo, $uen);
+        $advisorRows = $report->advisorSummaries($periodFrom, $periodTo, $uen, $channel);
         if ($advisorKey !== null && $advisorKey !== '') {
             $advisorRows = array_values(array_filter(
                 $advisorRows,
@@ -235,7 +236,7 @@ class ExportService
             'Asesor', 'Cliente', 'NIT', 'UEN', 'Canal',
             'Documentos', 'Gestiones', 'Saldo total', 'Saldo vencido', '% vencido',
         ]));
-        foreach ($report->clientExportRows($periodFrom, $periodTo, $uen, $advisorKey) as $row) {
+        foreach ($report->clientExportRows($periodFrom, $periodTo, $uen, $advisorKey, $channel) as $row) {
             $writer->addRow(Row::fromValues([
                 $row->advisor,
                 $row->client,
@@ -257,7 +258,7 @@ class ExportService
             'Días mora', 'Valor original', 'Saldo pendiente', 'Estado cartera',
         ]));
 
-        $report->portfolioExportQuery($periodFrom, $periodTo, $uen, $advisorKey)
+        $report->portfolioExportQuery($periodFrom, $periodTo, $uen, $advisorKey, $channel)
             ->chunk(1000, function ($records) use ($writer): void {
                 foreach ($records as $row) {
                     $writer->addRow(Row::fromValues([
@@ -285,7 +286,7 @@ class ExportService
             'Descripción', 'Fecha promesa', 'Monto promesa', 'Estado gestión',
         ]));
 
-        $report->managementExportQuery($periodFrom, $periodTo, $uen, $advisorKey)
+        $report->managementExportQuery($periodFrom, $periodTo, $uen, $advisorKey, $channel)
             ->chunk(1000, function ($records) use ($writer, $report): void {
                 foreach ($records as $row) {
                     $writer->addRow(Row::fromValues([

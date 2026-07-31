@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\ManagementLog;
 use App\Models\PortfolioDocument;
 use App\Services\Documents\DocumentTraceabilityService;
+use App\Services\Management\ManagementLogWriter;
 use App\Services\Reports\AdvisorPortfolioReportService;
 use App\Services\Reports\CommitmentActaQuery;
 use Filament\Notifications\Notification;
@@ -43,6 +44,21 @@ class ReportsPage extends Page
     public array $clientDocuments = [];
     public array $expandedDocuments = [];
     public array $documentManagements = [];
+
+    public bool $showMgmtModal = false;
+    public ?int $mgmtClientId = null;
+    public ?int $mgmtDocId = null;
+    public string $mgmtAdvisorKey = '';
+    public string $mgmtDocLabel = '';
+    public string $mgType = 'agreement';
+    public string $mgSubject = '';
+    public string $mgDescription = '';
+    public string $mgResult = '';
+    public string $mgContactDate = '';
+    public string $mgContactTime = '';
+    public string $mgFollowUp = '';
+    public string $mgPromisedAmt = '';
+    public string $mgPromisedDate = '';
 
     public function getHeading(): string|\Illuminate\Contracts\Support\Htmlable|null
     {
@@ -87,6 +103,7 @@ class ReportsPage extends Page
                 ->whereIn('status', PortfolioDocument::BALANCE_STATUSES)
                 ->whereNull('deleted_at'))
             ->when($this->uen, fn ($query) => $query->where('uen', $this->uen))
+            ->when($this->channel, fn ($query) => $query->where('channel', $this->channel))
             ->orderBy('name')
             ->pluck('name', 'id')
             ->toArray();
@@ -123,6 +140,7 @@ class ReportsPage extends Page
             'period_from' => $this->periodFrom ?: null,
             'period_to' => $this->periodTo ?: null,
             'uen' => $this->uen ?: null,
+            'channel' => $this->channel ?: null,
             'advisor' => $advisorKey,
         ], static fn ($value) => $value !== null && $value !== ''));
     }
@@ -146,6 +164,15 @@ class ReportsPage extends Page
     }
 
     public function updatedUen(): void
+    {
+        $this->resetReportResults();
+
+        if ($this->reportType === 'trazabilidad_documental') {
+            $this->clientId = '';
+        }
+    }
+
+    public function updatedChannel(): void
     {
         $this->resetReportResults();
 
@@ -226,6 +253,9 @@ class ReportsPage extends Page
         }
         if ($this->uen) {
             $q->where('c.uen', $this->uen);
+        }
+        if ($this->channel) {
+            $q->where('c.channel', $this->channel);
         }
     }
 
@@ -309,6 +339,7 @@ class ReportsPage extends Page
             $this->periodFrom,
             $this->periodTo,
             $this->uen,
+            $this->channel,
         );
 
         $total = array_sum(array_column((array) $rows, 'saldo_total'));
@@ -325,7 +356,7 @@ class ReportsPage extends Page
         }
 
         $this->advisorClients[$advisorKey] ??= app(AdvisorPortfolioReportService::class)
-            ->clientSummaries($advisorKey, $this->periodFrom, $this->periodTo, $this->uen);
+            ->clientSummaries($advisorKey, $this->periodFrom, $this->periodTo, $this->uen, $this->channel);
         $this->expandedAdvisors[$advisorKey] = true;
     }
 
@@ -340,7 +371,7 @@ class ReportsPage extends Page
         }
 
         $this->clientDocuments[$stateKey] ??= app(AdvisorPortfolioReportService::class)
-            ->documentRows($advisorKey, $clientId, $this->periodFrom, $this->periodTo, $this->uen);
+            ->documentRows($advisorKey, $clientId, $this->periodFrom, $this->periodTo, $this->uen, $this->channel);
         $this->expandedAdvisorClients[$stateKey] = true;
     }
 
@@ -365,6 +396,7 @@ class ReportsPage extends Page
                 $this->periodFrom,
                 $this->periodTo,
                 $this->uen,
+                $this->channel,
             );
         $this->expandedDocuments[$stateKey] = true;
     }
@@ -377,6 +409,172 @@ class ReportsPage extends Page
     public function documentStateKey(string $advisorKey, int $clientId, string $documentKey): string
     {
         return "{$advisorKey}:{$clientId}:{$documentKey}";
+    }
+
+    public function openManagementModal(
+        string $advisorKey,
+        int $clientId,
+        ?int $documentId = null,
+    ): void {
+        $clientIsVisible = collect($this->advisorClients[$advisorKey] ?? [])
+            ->contains(static fn (array $client): bool => (int) $client['client_id'] === $clientId);
+
+        if (! $clientIsVisible) {
+            return;
+        }
+
+        $client = Client::findOrFail($clientId);
+        $document = null;
+
+        if ($documentId !== null) {
+            $document = PortfolioDocument::query()
+                ->where('client_id', $clientId)
+                ->when(
+                    $advisorKey === 'unassigned',
+                    fn ($query) => $query->whereNull('advisor_id'),
+                    fn ($query) => $query->where('advisor_id', (int) $advisorKey),
+                )
+                ->findOrFail($documentId);
+        }
+
+        $this->mgmtClientId = $client->id;
+        $this->mgmtDocId = $document?->id;
+        $this->mgmtAdvisorKey = $advisorKey;
+        $this->mgmtDocLabel = $document
+            ? trim(($document->document_type ?: 'Documento') . ' #' . $document->document_number)
+            : 'Gestión general del cliente';
+        $this->resetManagementForm(false);
+        $this->showMgmtModal = true;
+    }
+
+    public function closeManagementModal(): void
+    {
+        $this->showMgmtModal = false;
+        $this->resetManagementForm();
+    }
+
+    public function managementModalClient(): ?Client
+    {
+        return $this->mgmtClientId ? Client::find($this->mgmtClientId) : null;
+    }
+
+    public function saveManagement(): void
+    {
+        $this->validate([
+            'mgmtClientId' => 'required|integer|exists:clients,id',
+            'mgmtDocId' => 'nullable|integer|exists:portfolio_documents,id',
+            'mgType' => 'required|in:call,email,visit,agreement,legal,other',
+            'mgSubject' => 'required|min:3|max:255',
+            'mgDescription' => 'required|min:5',
+            'mgResult' => 'nullable|in:no_contact,promise_to_pay,partial_payment,refused,arrangement,other',
+            'mgContactDate' => 'required|date',
+            'mgContactTime' => 'required|date_format:H:i',
+            'mgFollowUp' => 'nullable|date',
+            'mgPromisedAmt' => 'nullable|numeric|min:0',
+            'mgPromisedDate' => 'nullable|date',
+        ]);
+
+        $client = Client::findOrFail($this->mgmtClientId);
+        $advisorId = $this->mgmtAdvisorKey === 'unassigned'
+            ? null
+            : (int) $this->mgmtAdvisorKey;
+        $data = [
+            'type' => $this->mgType,
+            'subject' => $this->mgSubject,
+            'description' => $this->mgDescription,
+            'result' => $this->mgResult ?: null,
+            'contact_date' => $this->mgContactDate,
+            'contact_time' => $this->mgContactTime,
+            'follow_up_date' => $this->mgFollowUp ?: null,
+            'promised_amount' => $this->mgPromisedAmt !== '' ? (float) $this->mgPromisedAmt : null,
+            'promised_date' => $this->mgPromisedDate ?: null,
+        ];
+
+        if ($this->mgmtDocId !== null) {
+            $document = PortfolioDocument::query()
+                ->where('client_id', $client->id)
+                ->when(
+                    $advisorId === null,
+                    fn ($query) => $query->whereNull('advisor_id'),
+                    fn ($query) => $query->where('advisor_id', $advisorId),
+                )
+                ->findOrFail($this->mgmtDocId);
+            ManagementLogWriter::createForDocument($document, $data);
+        } else {
+            ManagementLogWriter::createForClient($client, $advisorId, $data);
+        }
+
+        $advisorKey = $this->mgmtAdvisorKey;
+        $clientId = $client->id;
+        $documentKey = $this->mgmtDocId !== null ? (string) $this->mgmtDocId : 'general';
+
+        [$this->columns, $this->rows, $this->summary] = $this->reportCarteraGestor();
+        $service = app(AdvisorPortfolioReportService::class);
+        $this->advisorClients[$advisorKey] = $service->clientSummaries(
+            $advisorKey,
+            $this->periodFrom,
+            $this->periodTo,
+            $this->uen,
+            $this->channel,
+        );
+        $clientStateKey = $this->advisorClientStateKey($advisorKey, $clientId);
+        $this->clientDocuments[$clientStateKey] = $service->documentRows(
+            $advisorKey,
+            $clientId,
+            $this->periodFrom,
+            $this->periodTo,
+            $this->uen,
+            $this->channel,
+        );
+        $documentStateKey = $this->documentStateKey($advisorKey, $clientId, $documentKey);
+        $this->documentManagements[$documentStateKey] = $service->managementRows(
+            $advisorKey,
+            $clientId,
+            $documentKey,
+            $this->periodFrom,
+            $this->periodTo,
+            $this->uen,
+            $this->channel,
+        );
+        $this->expandedAdvisors[$advisorKey] = true;
+        $this->expandedAdvisorClients[$clientStateKey] = true;
+        $this->expandedDocuments[$documentStateKey] = true;
+
+        $this->showMgmtModal = false;
+        $this->resetManagementForm();
+
+        Notification::make()
+            ->title('Gestión registrada correctamente')
+            ->success()
+            ->send();
+    }
+
+    public function appendQuickReply(string $text): void
+    {
+        $this->mgDescription = trim($this->mgDescription)
+            ? $this->mgDescription . "\n" . $text
+            : $text;
+    }
+
+    private function resetManagementForm(bool $resetContext = true): void
+    {
+        if ($resetContext) {
+            $this->mgmtClientId = null;
+            $this->mgmtDocId = null;
+            $this->mgmtAdvisorKey = '';
+            $this->mgmtDocLabel = '';
+        }
+
+        $this->mgType = 'agreement';
+        $this->mgSubject = '';
+        $this->mgDescription = '';
+        $this->mgResult = '';
+        $this->mgContactDate = now()->format('Y-m-d');
+        $this->mgContactTime = now()->format('H:i');
+        $this->mgFollowUp = '';
+        $this->mgPromisedAmt = '';
+        $this->mgPromisedDate = '';
+        $this->resetValidation();
     }
 
     private function resetAdvisorDrilldown(): void
@@ -409,6 +607,9 @@ class ReportsPage extends Page
 
         if ($this->uen) {
             $q->where('c.uen', $this->uen);
+        }
+        if ($this->channel) {
+            $q->where('c.channel', $this->channel);
         }
         if ($this->periodFrom) {
             $q->where('ml.promised_date', '>=', $this->periodFrom . '-01');
@@ -452,6 +653,9 @@ class ReportsPage extends Page
         if ($this->uen) {
             $q->where('c.uen', $this->uen);
         }
+        if ($this->channel) {
+            $q->where('c.channel', $this->channel);
+        }
         if ($this->periodFrom) {
             $q->where('ml.promised_date', '>=', $this->periodFrom . '-01');
         }
@@ -492,6 +696,9 @@ class ReportsPage extends Page
 
         if ($this->uen) {
             $q->where('c.uen', $this->uen);
+        }
+        if ($this->channel) {
+            $q->where('c.channel', $this->channel);
         }
         if ($this->periodFrom) {
             $q->where('ml.contact_date', '>=', $this->periodFrom . '-01');

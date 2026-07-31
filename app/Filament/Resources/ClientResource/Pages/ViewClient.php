@@ -195,6 +195,11 @@ class ViewClient extends ViewRecord
         $this->mgmtDocLabel = '';
     }
 
+    public function managementModalClient(): \App\Models\Client
+    {
+        return $this->record;
+    }
+
     public function saveManagement(): void
     {
         if (! $this->mgmtDocId) {

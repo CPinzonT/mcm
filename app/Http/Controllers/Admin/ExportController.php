@@ -79,6 +79,7 @@ class ExportController extends Controller
             (string) $request->query('period_to', ''),
             (string) $request->query('uen', ''),
             $request->filled('advisor') ? (string) $request->query('advisor') : null,
+            (string) $request->query('channel', ''),
         );
     }
 }

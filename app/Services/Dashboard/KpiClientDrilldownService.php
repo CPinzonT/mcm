@@ -28,6 +28,7 @@ class KpiClientDrilldownService
         string $type,
         ?string $uenFilter = null,
         ?string $channelFilter = null,
+        ?string $documentTypeFilter = null,
     ): array
     {
         if (! in_array($type, self::ALLOWED_TYPES, true)) {
@@ -53,12 +54,16 @@ class KpiClientDrilldownService
 
         $uenOptions = $this->dimensionOptions(clone $query, 'c.uen');
         $channelOptions = $this->dimensionOptions(clone $query, 'c.channel');
+        $documentTypeOptions = $this->dimensionOptions(clone $query, 'pd.document_type');
 
         if ($uenFilter !== null && trim($uenFilter) !== '') {
             $query->whereRaw('TRIM(c.uen) = ?', [trim($uenFilter)]);
         }
         if ($channelFilter !== null && trim($channelFilter) !== '') {
             $query->whereRaw('TRIM(c.channel) = ?', [trim($channelFilter)]);
+        }
+        if ($documentTypeFilter !== null && trim($documentTypeFilter) !== '') {
+            $query->whereRaw('TRIM(pd.document_type) = ?', [trim($documentTypeFilter)]);
         }
 
         [$daysSql, $daysBindings] = $this->liveDaysOverdueBindings($filters);
@@ -143,6 +148,7 @@ class KpiClientDrilldownService
             'total_amount' => $totalAmount,
             'uen_options' => $uenOptions,
             'channel_options' => $channelOptions,
+            'document_type_options' => $documentTypeOptions,
             'rows' => $mappedRows,
         ];
     }

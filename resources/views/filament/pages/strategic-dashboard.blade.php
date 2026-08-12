@@ -254,6 +254,14 @@ body:has(.sd-page) .fi-page-content {
 .sd-kpi-value.c-amber  { color: var(--mcm-amber) !important; }
 .sd-kpi-value.c-red    { color: var(--mcm-red) !important; }
 .sd-kpi-value.c-blue   { color: var(--mcm-brand) !important; }
+.sd-kpi--management-alert {
+    border-color: color-mix(in srgb, var(--mcm-amber) 55%, var(--mcm-border));
+    background: color-mix(in srgb, var(--mcm-amber) 8%, var(--mcm-surface));
+}
+.sd-kpi--management-alert.has-alert {
+    border-color: color-mix(in srgb, var(--mcm-red) 60%, var(--mcm-border));
+    background: color-mix(in srgb, var(--mcm-red) 8%, var(--mcm-surface));
+}
 .sd-kpi-sub .c-green,
 .sd-kpi-sub .c-amber,
 .sd-kpi-sub .c-red { font-weight: 700; }
@@ -867,6 +875,17 @@ body:has(.sd-page) .fi-page-content {
             </button>
         </div>
 
+        {{-- Gestiones próximas a vencer --}}
+        <div class="sd-kpi sd-kpi--management-alert {{ $this->upcomingManagementCount > 0 ? 'has-alert' : '' }}">
+            <div class="sd-kpi-label">Gestiones por vencer · 3 días</div>
+            <div class="sd-kpi-value {{ $this->upcomingManagementCount > 0 ? 'c-red' : 'c-green' }}">
+                {{ number_format($this->upcomingManagementCount, 0, ',', '.') }}
+            </div>
+            <a href="{{ $this->managementDueSoonUrl() }}" class="sd-kpi-drill-link">
+                Ir a Gestión de cartera →
+            </a>
+        </div>
+
     </div>
 
     @if($rotationTrendData !== null)
@@ -944,7 +963,20 @@ body:has(.sd-page) .fi-page-content {
                         @endforeach
                     </select>
                 </div>
-                @if($kpiDrilldownUenFilter !== '' || $kpiDrilldownChannelFilter !== '')
+                <div class="sd-kpi-drilldown-filter">
+                    <label for="kpi-drill-document-type">Tipo de documento</label>
+                    <select id="kpi-drill-document-type" wire:model.live="kpiDrilldownDocumentTypeFilter" class="sd-filter-input">
+                        <option value="">Todos los tipos</option>
+                        @foreach($drill['document_type_options'] as $documentType)
+                            <option value="{{ $documentType }}">{{ $documentType }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @if(
+                    $kpiDrilldownUenFilter !== ''
+                    || $kpiDrilldownChannelFilter !== ''
+                    || $kpiDrilldownDocumentTypeFilter !== ''
+                )
                     <button type="button" class="sd-kpi-drilldown-close" wire:click="clearKpiDrilldownFilters">
                         Limpiar filtros
                     </button>

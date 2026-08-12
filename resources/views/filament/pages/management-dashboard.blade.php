@@ -43,7 +43,7 @@
     align-items: end;
     display: grid;
     gap: 0.9rem;
-    grid-template-columns: minmax(12rem, 0.35fr) minmax(12rem, 1fr) auto;
+    grid-template-columns: repeat(2, minmax(12rem, 0.4fr)) minmax(12rem, 1fr) auto;
 }
 
 .mgmt-dashboard .mgmt-filter-note {
@@ -157,6 +157,17 @@
 .mgmt-dashboard .data-table { min-width: 46rem; }
 
 .mgmt-dashboard .advisor-name { color: var(--mcm-text-strong); font-weight: 600; }
+.mgmt-dashboard .advisor-link {
+    background: none; border: 0; color: var(--mcm-accent); cursor: pointer;
+    font: inherit; font-weight: 700; padding: 0; text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.mgmt-dashboard .mgmt-follow-up-toggle {
+    align-items: center; color: var(--mcm-text); display: inline-flex;
+    font-size: .8rem; font-weight: 600; gap: .45rem; margin-top: .45rem;
+}
+.mgmt-dashboard .mgmt-follow-up-toggle input { accent-color: var(--mcm-amber); }
+.mgmt-dashboard .mgmt-due-date { color: var(--mcm-red); font-weight: 700; }
 .mgmt-dashboard .money-value { font-family: var(--font-mono, ui-monospace, monospace); font-weight: 600; font-variant-numeric: tabular-nums; }
 .mgmt-dashboard .empty-row { color: var(--mcm-muted); padding: 2.5rem 1rem; text-align: center; }
 
@@ -184,6 +195,7 @@
     $clientCoverage = ($k['clients_managed'] + $k['clients_unmanaged']) > 0
         ? round($k['clients_managed'] / ($k['clients_managed'] + $k['clients_unmanaged']) * 100)
         : 0;
+    $selectedAdvisorName = $advisorId ? ($this->advisorOptions[$advisorId] ?? 'Asesor seleccionado') : null;
 @endphp
 
 <div class="mcm-modern-page mgmt-dashboard space-y-5" x-data="mgmtDashboard(@js($this->trendChart))">
@@ -202,6 +214,15 @@
     <section class="filter-bar mcm-reveal">
         <div class="mgmt-filter-grid">
             <div>
+                <p class="filter-label">Asesor</p>
+                <select wire:model.live="advisorId" class="filter-input">
+                    <option value="">Todos los asesores</option>
+                    @foreach($this->advisorOptions as $id => $name)
+                        <option value="{{ $id }}">{{ $name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
                 <p class="filter-label">Ventana de tendencia</p>
                 <select wire:model="trendDays" class="filter-input">
                     <option value="7">Últimos 7 días</option>
@@ -209,7 +230,13 @@
                     <option value="90">Últimos 90 días</option>
                 </select>
             </div>
-            <p class="mgmt-filter-note">Actualiza la gráfica sin salir del tablero. Los indicadores principales mantienen la lectura operativa del período actual.</p>
+            <div>
+                <p class="mgmt-filter-note">El asesor filtra los indicadores, la gráfica y el detalle de gestiones realizadas.</p>
+                <label class="mgmt-follow-up-toggle">
+                    <input type="checkbox" wire:model.live="dueSoonOnly">
+                    Solo gestiones por vencer en 3 días
+                </label>
+            </div>
             <button wire:click="applyFilter" class="btn-primary"><x-heroicon-o-arrow-path /> Actualizar</button>
         </div>
     </section>
@@ -261,7 +288,11 @@
                     @forelse($this->advisorStats as $row)
                     @php $row = (object) $row; $pct = $row->promises > 0 ? round($row->fulfilled / $row->promises * 100) : 0; @endphp
                     <tr>
-                        <td class="advisor-name">{{ $row->name }}</td>
+                        <td class="advisor-name">
+                            <button type="button" class="advisor-link" wire:click="selectAdvisor({{ $row->id }})">
+                                {{ $row->name }}
+                            </button>
+                        </td>
                         <td class="text-right">{{ number_format($row->total_actions) }}</td>
                         <td class="text-right">{{ number_format($row->promises) }}</td>
                         <td class="text-right" style="color: var(--mcm-green);">{{ number_format($row->fulfilled) }}</td>
@@ -280,6 +311,80 @@
                 </tbody>
             </table>
         </div>
+    </section>
+
+    <section class="mgmt-table-card mcm-reveal">
+        <div class="mgmt-section-head">
+            <div>
+                <div class="mgmt-section-title">
+                    {{ $dueSoonOnly ? 'Gestiones por vencer en los próximos 3 días' : 'Detalle de gestiones realizadas' }}
+                </div>
+                <p class="mgmt-section-copy">
+                    @if($selectedAdvisorName)
+                        Asesor: {{ $selectedAdvisorName }}.
+                    @else
+                        Todos los asesores.
+                    @endif
+                    {{ $dueSoonOnly ? 'Se muestran seguimientos abiertos desde hoy hasta tres días.' : "Últimos {$trendDays} días." }}
+                </p>
+            </div>
+            <span class="mgmt-badge">{{ number_format($this->managementRows->total()) }} gestiones</span>
+        </div>
+        <div class="mgmt-table-wrap">
+            <table class="data-table" style="min-width:70rem;">
+                <thead>
+                    <tr>
+                        <th>Fecha gestión</th>
+                        <th>Asesor</th>
+                        <th>Cliente</th>
+                        <th>Documento</th>
+                        <th>Tipo</th>
+                        <th>Asunto</th>
+                        <th>Resultado</th>
+                        <th>Estado</th>
+                        <th>Próximo seguimiento</th>
+                        <th class="text-right">Valor prometido</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($this->managementRows as $management)
+                        <tr>
+                            <td>
+                                {{ \Carbon\Carbon::parse($management['contact_date'])->format('d/m/Y') }}
+                                {{ $management['contact_time'] ?? '' }}
+                            </td>
+                            <td class="advisor-name">{{ $management['advisor'] ?: 'Sin asesor' }}</td>
+                            <td>
+                                <a
+                                    class="advisor-link"
+                                    href="{{ \App\Filament\Resources\ClientResource::getUrl('view', ['record' => $management['client_id']]) }}"
+                                >
+                                    {{ $management['client'] }}
+                                </a>
+                            </td>
+                            <td>{{ $management['document_number'] ?: 'General' }}</td>
+                            <td>{{ $management['type'] }}</td>
+                            <td>{{ $management['subject'] ?: '—' }}</td>
+                            <td>{{ $management['result'] }}</td>
+                            <td>{{ $management['status'] }}</td>
+                            <td class="{{ $management['follow_up_date'] ? 'mgmt-due-date' : '' }}">
+                                {{ $management['follow_up_date'] ? \Carbon\Carbon::parse($management['follow_up_date'])->format('d/m/Y') : '—' }}
+                            </td>
+                            <td class="text-right money-value">
+                                {{ $management['promised_amount'] !== null ? '$'.number_format($management['promised_amount'], 0, ',', '.') : '—' }}
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="10" class="empty-row">No hay gestiones para los filtros seleccionados.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        @if($this->managementRows->hasPages())
+            <div style="margin-top:1rem;">
+                {{ $this->managementRows->links('livewire::simple-tailwind', data: ['scrollTo' => false]) }}
+            </div>
+        @endif
     </section>
 </div>
 

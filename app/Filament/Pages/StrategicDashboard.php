@@ -63,6 +63,8 @@ class StrategicDashboard extends Page
 
     public string $kpiDrilldownChannelFilter = '';
 
+    public string $kpiDrilldownDocumentTypeFilter = '';
+
     /** @var array<string, mixed>|null */
     public ?array $rotationTrendData = null;
 
@@ -98,6 +100,7 @@ class StrategicDashboard extends Page
         $this->kpiDrilldownType = $context['drilldown_type'] ?? null;
         $this->kpiDrilldownUenFilter = (string) ($context['drilldown_uen'] ?? '');
         $this->kpiDrilldownChannelFilter = (string) ($context['drilldown_channel'] ?? '');
+        $this->kpiDrilldownDocumentTypeFilter = (string) ($context['drilldown_document_type'] ?? '');
 
         $this->normalizeAdvisorIds();
         $this->refreshKpiDrilldown();
@@ -246,6 +249,50 @@ class StrategicDashboard extends Page
     }
 
     #[Computed]
+    public function upcomingManagementCount(): int
+    {
+        $query = DB::table('management_logs as ml')
+            ->join('clients as c', 'c.id', '=', 'ml.client_id')
+            ->leftJoin('portfolio_documents as pd', 'pd.id', '=', 'ml.portfolio_document_id')
+            ->whereNull('ml.deleted_at')
+            ->where('ml.status', '!=', 'closed')
+            ->whereNotNull('ml.follow_up_date')
+            ->whereBetween('ml.follow_up_date', [
+                today()->toDateString(),
+                today()->addDays(3)->toDateString(),
+            ]);
+
+        if ($this->selectedAdvisors !== []) {
+            $query->whereIn('ml.advisor_id', $this->selectedAdvisors);
+        }
+        if ($this->selectedUens !== []) {
+            $query->whereIn(DB::raw('TRIM(c.uen)'), $this->selectedUens);
+        }
+        if ($this->selectedChannels !== []) {
+            $query->whereIn(DB::raw('TRIM(c.channel)'), $this->selectedChannels);
+        }
+        if ($this->selectedRegionals !== []) {
+            $query->whereIn(DB::raw('TRIM(c.region)'), $this->selectedRegionals);
+        }
+        if ($this->selectedRiskLevels !== []) {
+            $query->whereIn('pd.risk_level', $this->selectedRiskLevels);
+        }
+        if ($this->selectedDocumentTypes !== []) {
+            $query->whereIn('pd.document_type', $this->selectedDocumentTypes);
+        }
+        if ($this->clientId !== null && $this->clientId !== '') {
+            $query->where('ml.client_id', (int) $this->clientId);
+        }
+
+        return $query->count('ml.id');
+    }
+
+    public function managementDueSoonUrl(): string
+    {
+        return ManagementDashboardPage::getUrl(['follow_up' => '3d']);
+    }
+
+    #[Computed]
     public function charts(): array
     {
         return app(ChartService::class)->compute($this->filters);
@@ -312,6 +359,7 @@ class StrategicDashboard extends Page
             $this->accountingMonthOptionsShort,
             $this->accountingYearOptions,
             $this->activeDateRangeLabel,
+            $this->upcomingManagementCount,
         );
         $this->refreshKpiDrilldown();
         $this->refreshRotationTrend();
@@ -323,6 +371,7 @@ class StrategicDashboard extends Page
         $this->kpiDrilldownType = $type;
         $this->kpiDrilldownUenFilter = '';
         $this->kpiDrilldownChannelFilter = '';
+        $this->kpiDrilldownDocumentTypeFilter = '';
         $this->refreshKpiDrilldown();
         $this->dispatch('kpi-drilldown-opened');
     }
@@ -333,6 +382,7 @@ class StrategicDashboard extends Page
         $this->kpiDrilldownData = null;
         $this->kpiDrilldownUenFilter = '';
         $this->kpiDrilldownChannelFilter = '';
+        $this->kpiDrilldownDocumentTypeFilter = '';
     }
 
     public function updatedKpiDrilldownUenFilter(): void
@@ -345,10 +395,16 @@ class StrategicDashboard extends Page
         $this->refreshKpiDrilldown();
     }
 
+    public function updatedKpiDrilldownDocumentTypeFilter(): void
+    {
+        $this->refreshKpiDrilldown();
+    }
+
     public function clearKpiDrilldownFilters(): void
     {
         $this->kpiDrilldownUenFilter = '';
         $this->kpiDrilldownChannelFilter = '';
+        $this->kpiDrilldownDocumentTypeFilter = '';
         $this->refreshKpiDrilldown();
     }
 
@@ -374,6 +430,7 @@ class StrategicDashboard extends Page
             'drilldown_type' => $this->kpiDrilldownType,
             'drilldown_uen' => $this->kpiDrilldownUenFilter,
             'drilldown_channel' => $this->kpiDrilldownChannelFilter,
+            'drilldown_document_type' => $this->kpiDrilldownDocumentTypeFilter,
         ]);
 
         $this->redirect(ClientResource::getUrl('view', [
@@ -416,6 +473,7 @@ class StrategicDashboard extends Page
                 $this->kpiDrilldownType,
                 $this->kpiDrilldownUenFilter,
                 $this->kpiDrilldownChannelFilter,
+                $this->kpiDrilldownDocumentTypeFilter,
             );
     }
 

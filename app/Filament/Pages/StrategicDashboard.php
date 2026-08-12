@@ -63,7 +63,8 @@ class StrategicDashboard extends Page
 
     public string $kpiDrilldownChannelFilter = '';
 
-    public string $kpiDrilldownDocumentTypeFilter = '';
+    /** @var string[] */
+    public array $kpiDrilldownDocumentTypeFilters = [];
 
     /** @var array<string, mixed>|null */
     public ?array $rotationTrendData = null;
@@ -100,7 +101,10 @@ class StrategicDashboard extends Page
         $this->kpiDrilldownType = $context['drilldown_type'] ?? null;
         $this->kpiDrilldownUenFilter = (string) ($context['drilldown_uen'] ?? '');
         $this->kpiDrilldownChannelFilter = (string) ($context['drilldown_channel'] ?? '');
-        $this->kpiDrilldownDocumentTypeFilter = (string) ($context['drilldown_document_type'] ?? '');
+        $this->kpiDrilldownDocumentTypeFilters = array_values(array_filter(
+            (array) ($context['drilldown_document_types'] ?? []),
+            static fn ($value): bool => is_string($value) && trim($value) !== '',
+        ));
 
         $this->normalizeAdvisorIds();
         $this->refreshKpiDrilldown();
@@ -371,7 +375,7 @@ class StrategicDashboard extends Page
         $this->kpiDrilldownType = $type;
         $this->kpiDrilldownUenFilter = '';
         $this->kpiDrilldownChannelFilter = '';
-        $this->kpiDrilldownDocumentTypeFilter = '';
+        $this->kpiDrilldownDocumentTypeFilters = [];
         $this->refreshKpiDrilldown();
         $this->dispatch('kpi-drilldown-opened');
     }
@@ -382,7 +386,7 @@ class StrategicDashboard extends Page
         $this->kpiDrilldownData = null;
         $this->kpiDrilldownUenFilter = '';
         $this->kpiDrilldownChannelFilter = '';
-        $this->kpiDrilldownDocumentTypeFilter = '';
+        $this->kpiDrilldownDocumentTypeFilters = [];
     }
 
     public function updatedKpiDrilldownUenFilter(): void
@@ -395,7 +399,7 @@ class StrategicDashboard extends Page
         $this->refreshKpiDrilldown();
     }
 
-    public function updatedKpiDrilldownDocumentTypeFilter(): void
+    public function updatedKpiDrilldownDocumentTypeFilters(): void
     {
         $this->refreshKpiDrilldown();
     }
@@ -404,7 +408,7 @@ class StrategicDashboard extends Page
     {
         $this->kpiDrilldownUenFilter = '';
         $this->kpiDrilldownChannelFilter = '';
-        $this->kpiDrilldownDocumentTypeFilter = '';
+        $this->kpiDrilldownDocumentTypeFilters = [];
         $this->refreshKpiDrilldown();
     }
 
@@ -430,7 +434,7 @@ class StrategicDashboard extends Page
             'drilldown_type' => $this->kpiDrilldownType,
             'drilldown_uen' => $this->kpiDrilldownUenFilter,
             'drilldown_channel' => $this->kpiDrilldownChannelFilter,
-            'drilldown_document_type' => $this->kpiDrilldownDocumentTypeFilter,
+            'drilldown_document_types' => $this->kpiDrilldownDocumentTypeFilters,
         ]);
 
         $this->redirect(ClientResource::getUrl('view', [
@@ -473,7 +477,7 @@ class StrategicDashboard extends Page
                 $this->kpiDrilldownType,
                 $this->kpiDrilldownUenFilter,
                 $this->kpiDrilldownChannelFilter,
-                $this->kpiDrilldownDocumentTypeFilter,
+                $this->kpiDrilldownDocumentTypeFilters,
             );
     }
 

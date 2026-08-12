@@ -239,7 +239,7 @@ body:has(.sd-page) .fi-page-content {
     grid-template-columns: repeat(6, 1fr);
     gap: .6rem;
 }
-@media (max-width: 1300px) { .sd-kpi-strip { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 1300px) { .sd-kpi-strip { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 860px)  { .sd-kpi-strip { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 600px)  { .sd-kpi-strip { grid-template-columns: repeat(2, 1fr); } }
 .sd-kpi {
@@ -331,6 +331,29 @@ body:has(.sd-page) .fi-page-content {
     text-transform: uppercase;
 }
 .sd-kpi-drilldown-filter .sd-filter-input { width: 100%; }
+.sd-kpi-drilldown-document-options {
+    display: grid;
+    gap: .25rem;
+    max-height: 7.5rem;
+    min-width: 13rem;
+    overflow-y: auto;
+    padding: .45rem .55rem;
+    background: var(--mcm-surface);
+    border: 1px solid var(--mcm-border);
+    border-radius: 8px;
+}
+.sd-kpi-drilldown-document-options label {
+    align-items: center;
+    color: var(--mcm-text);
+    cursor: pointer;
+    display: flex;
+    font-size: .7rem;
+    font-weight: 600;
+    gap: .4rem;
+    margin: 0;
+    text-transform: none;
+}
+.sd-kpi-drilldown-document-options input { accent-color: var(--mcm-accent); }
 .sd-kpi-drilldown-table-wrap { max-height: 28rem; overflow: auto; }
 .sd-kpi-drilldown-table { width: 100%; border-collapse: collapse; font-size: .7rem; }
 .sd-kpi-drilldown-table th {
@@ -363,7 +386,8 @@ body:has(.sd-page) .fi-page-content {
 }
 .sd-kpi-document-types { min-width: 9rem; line-height: 1.45; }
 .sd-kpi-document-types div { white-space: nowrap; }
-.sd-kpi--collection-summary { grid-column: span 4; }
+.sd-kpi--secondary { grid-column: span 2; }
+.sd-kpi--collection-summary { grid-column: 1 / -1; order: 20; }
 .sd-collection-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -387,9 +411,9 @@ body:has(.sd-page) .fi-page-content {
     display: block;
     height: 100%;
 }
-@media (max-width: 860px) { .sd-kpi--collection-summary { grid-column: span 3; } }
+@media (max-width: 1300px) { .sd-kpi--secondary { grid-column: span 1; } }
 @media (max-width: 600px) {
-    .sd-kpi--collection-summary { grid-column: span 2; }
+    .sd-kpi--management-alert { grid-column: 1 / -1; }
     .sd-collection-grid { grid-template-columns: 1fr; }
     .sd-collection-item + .sd-collection-item { border-left: 0; border-top: 1px solid var(--mcm-border); padding-left: 0; padding-top: .55rem; }
 }
@@ -772,7 +796,7 @@ body:has(.sd-page) .fi-page-content {
         </div>
 
         {{-- 7. % Documentos Vencidos (+ peso en cartera) --}}
-        <div class="sd-kpi">
+        <div class="sd-kpi sd-kpi--secondary">
             <div class="sd-kpi-label">% Documentos Vencidos</div>
             <div class="sd-kpi-value {{ $ovDocClass }}">{{ number_format($k['overdue_doc_rate'], 1, ',', '.') }}%</div>
             <div class="sd-kpi-sub">{{ number_format($k['overdue_docs']) }} / {{ number_format($k['total_docs']) }} docs con días de mora</div>
@@ -844,7 +868,7 @@ body:has(.sd-page) .fi-page-content {
         </div>
 
         {{-- 12. % Saldo Negativo --}}
-        <div class="sd-kpi">
+        <div class="sd-kpi sd-kpi--secondary">
             <div class="sd-kpi-label">% Saldo Negativo</div>
             @if($k['negative_rate'] !== null)
                 <div class="sd-kpi-value {{ $negClass }}">{{ number_format($k['negative_rate'], 1, ',', '.') }}%</div>
@@ -876,7 +900,7 @@ body:has(.sd-page) .fi-page-content {
         </div>
 
         {{-- Gestiones próximas a vencer --}}
-        <div class="sd-kpi sd-kpi--management-alert {{ $this->upcomingManagementCount > 0 ? 'has-alert' : '' }}">
+        <div class="sd-kpi sd-kpi--secondary sd-kpi--management-alert {{ $this->upcomingManagementCount > 0 ? 'has-alert' : '' }}">
             <div class="sd-kpi-label">Gestiones por vencer · 3 días</div>
             <div class="sd-kpi-value {{ $this->upcomingManagementCount > 0 ? 'c-red' : 'c-green' }}">
                 {{ number_format($this->upcomingManagementCount, 0, ',', '.') }}
@@ -964,18 +988,24 @@ body:has(.sd-page) .fi-page-content {
                     </select>
                 </div>
                 <div class="sd-kpi-drilldown-filter">
-                    <label for="kpi-drill-document-type">Tipo de documento</label>
-                    <select id="kpi-drill-document-type" wire:model.live="kpiDrilldownDocumentTypeFilter" class="sd-filter-input">
-                        <option value="">Todos los tipos</option>
+                    <label>Tipo de documento</label>
+                    <div class="sd-kpi-drilldown-document-options">
                         @foreach($drill['document_type_options'] as $documentType)
-                            <option value="{{ $documentType }}">{{ $documentType }}</option>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    value="{{ $documentType }}"
+                                    wire:model.live="kpiDrilldownDocumentTypeFilters"
+                                >
+                                <span>{{ $documentType }}</span>
+                            </label>
                         @endforeach
-                    </select>
+                    </div>
                 </div>
                 @if(
                     $kpiDrilldownUenFilter !== ''
                     || $kpiDrilldownChannelFilter !== ''
-                    || $kpiDrilldownDocumentTypeFilter !== ''
+                    || $kpiDrilldownDocumentTypeFilters !== []
                 )
                     <button type="button" class="sd-kpi-drilldown-close" wire:click="clearKpiDrilldownFilters">
                         Limpiar filtros

@@ -28,7 +28,7 @@ class KpiClientDrilldownService
         string $type,
         ?string $uenFilter = null,
         ?string $channelFilter = null,
-        ?string $documentTypeFilter = null,
+        array $documentTypeFilters = [],
     ): array
     {
         if (! in_array($type, self::ALLOWED_TYPES, true)) {
@@ -62,8 +62,12 @@ class KpiClientDrilldownService
         if ($channelFilter !== null && trim($channelFilter) !== '') {
             $query->whereRaw('TRIM(c.channel) = ?', [trim($channelFilter)]);
         }
-        if ($documentTypeFilter !== null && trim($documentTypeFilter) !== '') {
-            $query->whereRaw('TRIM(pd.document_type) = ?', [trim($documentTypeFilter)]);
+        $documentTypeFilters = array_values(array_unique(array_filter(
+            array_map(static fn ($value): string => trim((string) $value), $documentTypeFilters),
+            static fn (string $value): bool => $value !== '',
+        )));
+        if ($documentTypeFilters !== []) {
+            $query->whereIn(DB::raw('TRIM(pd.document_type)'), $documentTypeFilters);
         }
 
         [$daysSql, $daysBindings] = $this->liveDaysOverdueBindings($filters);
